@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock
 from download_binaries import (
     install_npm_dependency,
     install_npm_dependencies,
+    is_prerelease,
     parse_semver,
     resolve_version,
     strip_node_modules,
@@ -32,6 +33,25 @@ class TestParseSemver:
 
     def test_ignores_prerelease_suffix(self):
         assert parse_semver("1.0.0-beta.1") == (1, 0, 0)
+
+
+class TestIsPrerelease:
+    """Test prerelease version detection."""
+
+    def test_stable_version(self):
+        assert not is_prerelease("3.24.4")
+
+    def test_canary_version(self):
+        assert is_prerelease("3.26.0-canary.20250521T085653")
+
+    def test_beta_version(self):
+        assert is_prerelease("1.0.0-beta.1")
+
+    def test_alpha_version(self):
+        assert is_prerelease("2.0.0-alpha")
+
+    def test_rc_version(self):
+        assert is_prerelease("1.0.0-rc.1")
 
 
 class TestResolveVersion:
@@ -90,6 +110,21 @@ class TestResolveVersion:
         versions = ["2.0.0", "2.0.5", "2.3.0", "3.0.0", "3.6.0", "4.0.0", "4.7.0"]
         result = resolve_version("^2.0.5", versions)
         assert result == "2.3.0"
+
+    def test_skips_prerelease_versions(self):
+        """Should not pick canary/beta/alpha versions."""
+        versions = ["3.22.4", "3.24.4", "3.26.0-canary.20250521T085653"]
+        result = resolve_version("^3.22.4", versions)
+        assert result == "3.24.4"
+
+    def test_zod_scenario(self):
+        """agent-browser needs ^3.22.4, should get stable 3.x not canary."""
+        versions = [
+            "3.22.0", "3.22.4", "3.23.0", "3.24.4",
+            "3.26.0-canary.20250521T085653",
+        ]
+        result = resolve_version("^3.22.4", versions)
+        assert result == "3.24.4"
 
 
 class TestInstallNpmDependency:

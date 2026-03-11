@@ -195,6 +195,15 @@ def parse_semver(version: str) -> tuple[int, int, int]:
     return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
 
 
+def is_prerelease(version: str) -> bool:
+    """Check if a version string contains a prerelease tag."""
+    match = re.match(r"\d+\.\d+\.\d+(.*)", version)
+    if not match:
+        return False
+    suffix = match.group(1)
+    return bool(suffix and suffix.startswith("-"))
+
+
 def resolve_version(version_spec: str, available_versions: list[str]) -> str | None:
     """Resolve a npm version spec to the best matching version.
 
@@ -202,9 +211,11 @@ def resolve_version(version_spec: str, available_versions: list[str]) -> str | N
     """
     spec = version_spec.strip()
 
-    # Parse all valid semver versions
+    # Parse all valid semver versions, skipping prereleases
     candidates = []
     for v in available_versions:
+        if is_prerelease(v):
+            continue
         parsed = parse_semver(v)
         if parsed != (0, 0, 0) or v == "0.0.0":
             candidates.append((parsed, v))
