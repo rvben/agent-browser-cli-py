@@ -82,7 +82,28 @@ def main() -> int:
     env["NPM_CONFIG_OFFLINE"] = "true"
 
     try:
-        return subprocess.call([cli_path] + sys.argv[1:], env=env)
+        result = subprocess.run(
+            [cli_path] + sys.argv[1:],
+            env=env,
+            stderr=subprocess.PIPE,
+        )
+        stderr = result.stderr.decode("utf-8", errors="replace")
+        if stderr:
+            print(stderr, end="", file=sys.stderr)
+        if result.returncode != 0:
+            if "error while loading shared libraries" in stderr:
+                print(
+                    "\nHint: Chromium is missing system dependencies. Run:\n"
+                    "  agent-browser install --with-deps",
+                    file=sys.stderr,
+                )
+            elif "Executable doesn't exist" in stderr:
+                print(
+                    "\nHint: Chromium is not installed. Run:\n"
+                    "  agent-browser install",
+                    file=sys.stderr,
+                )
+        return result.returncode
     except FileNotFoundError:
         print(f"Error: Could not execute {cli_path}", file=sys.stderr)
         return 1
