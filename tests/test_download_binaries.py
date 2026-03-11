@@ -9,8 +9,87 @@ from unittest.mock import patch, MagicMock
 from download_binaries import (
     install_npm_dependency,
     install_npm_dependencies,
+    parse_semver,
+    resolve_version,
     strip_node_modules,
 )
+
+
+class TestParseSemver:
+    """Test semver string parsing."""
+
+    def test_parses_standard_version(self):
+        assert parse_semver("1.2.3") == (1, 2, 3)
+
+    def test_parses_zero_version(self):
+        assert parse_semver("0.0.0") == (0, 0, 0)
+
+    def test_parses_large_numbers(self):
+        assert parse_semver("22.14.0") == (22, 14, 0)
+
+    def test_returns_zero_for_invalid(self):
+        assert parse_semver("not-a-version") == (0, 0, 0)
+
+    def test_ignores_prerelease_suffix(self):
+        assert parse_semver("1.0.0-beta.1") == (1, 0, 0)
+
+
+class TestResolveVersion:
+    """Test npm version spec resolution."""
+
+    VERSIONS = [
+        "1.0.0", "1.1.0", "1.2.3",
+        "2.0.0", "2.0.5", "2.1.0", "2.3.7",
+        "3.0.0", "3.1.0",
+        "4.0.0", "4.7.0",
+    ]
+
+    def test_caret_stays_within_major(self):
+        result = resolve_version("^2.0.5", self.VERSIONS)
+        assert result == "2.3.7"
+
+    def test_caret_does_not_cross_major(self):
+        result = resolve_version("^2.0.0", self.VERSIONS)
+        assert result == "2.3.7"
+        assert not result.startswith("3")
+
+    def test_caret_major_3(self):
+        result = resolve_version("^3.0.0", self.VERSIONS)
+        assert result == "3.1.0"
+
+    def test_tilde_stays_within_minor(self):
+        result = resolve_version("~2.0.0", self.VERSIONS)
+        assert result == "2.0.5"
+
+    def test_tilde_does_not_cross_minor(self):
+        result = resolve_version("~2.0.0", self.VERSIONS)
+        assert result != "2.1.0"
+
+    def test_exact_version(self):
+        result = resolve_version("2.0.5", self.VERSIONS)
+        assert result == "2.0.5"
+
+    def test_exact_version_missing(self):
+        result = resolve_version("9.9.9", self.VERSIONS)
+        assert result is None
+
+    def test_gte_returns_highest(self):
+        result = resolve_version(">=3.0.0", self.VERSIONS)
+        assert result == "4.7.0"
+
+    def test_fallback_to_latest(self):
+        result = resolve_version("*", self.VERSIONS)
+        assert result == "4.7.0"
+
+    def test_empty_versions(self):
+        result = resolve_version("^1.0.0", [])
+        assert result is None
+
+    def test_readable_stream_scenario(self):
+        """lazystream needs ^2.0.5, should get 2.x not 4.x."""
+        versions = ["2.0.0", "2.0.5", "2.3.0", "3.0.0", "3.6.0", "4.0.0", "4.7.0"]
+        result = resolve_version("^2.0.5", versions)
+        assert result == "2.3.0"
 
 
 class TestInstallNpmDependency:
@@ -40,7 +119,7 @@ class TestInstallNpmDependency:
         return str(tarball_path)
 
     def _mock_registry(self, name, version, tarball_url):
-        """Create a mock registry response."""
+        """Create a mock registry response with the version as both latest and only entry."""
         data = json.dumps(
             {
                 "dist-tags": {"latest": version},

@@ -9,6 +9,7 @@ This script is called by the Makefile before building the wheel.
 """
 
 import os
+import re
 import sys
 import shutil
 import tarfile
@@ -186,6 +187,73 @@ def install_npm_dependencies(node_modules_dir: str) -> None:
         install_npm_dependency(node_modules_dir, dep_name, dep_version_spec)
 
 
+def parse_semver(version: str) -> tuple[int, int, int]:
+    """Parse a semver string into (major, minor, patch)."""
+    match = re.match(r"(\d+)\.(\d+)\.(\d+)", version)
+    if not match:
+        return (0, 0, 0)
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+
+def resolve_version(version_spec: str, available_versions: list[str]) -> str | None:
+    """Resolve a npm version spec to the best matching version.
+
+    Supports: ^x.y.z, ~x.y.z, x.y.z (exact), >=x.y.z, x (major-only).
+    """
+    spec = version_spec.strip()
+
+    # Parse all valid semver versions
+    candidates = []
+    for v in available_versions:
+        parsed = parse_semver(v)
+        if parsed != (0, 0, 0) or v == "0.0.0":
+            candidates.append((parsed, v))
+
+    if not candidates:
+        return None
+
+    # Exact version
+    if re.match(r"^\d+\.\d+\.\d+$", spec):
+        return spec if spec in available_versions else None
+
+    # ^x.y.z — compatible with major (>=x.y.z, <next-major)
+    m = re.match(r"^\^(\d+\.\d+\.\d+)$", spec)
+    if m:
+        floor = parse_semver(m.group(1))
+        ceiling_major = floor[0] + 1 if floor[0] > 0 else 0
+        matching = [
+            (p, v) for p, v in candidates
+            if p >= floor and (floor[0] == 0 or p[0] < ceiling_major)
+        ]
+        if not matching:
+            return None
+        return max(matching, key=lambda x: x[0])[1]
+
+    # ~x.y.z — compatible with minor (>=x.y.z, <x.next-minor.0)
+    m = re.match(r"^~(\d+\.\d+\.\d+)$", spec)
+    if m:
+        floor = parse_semver(m.group(1))
+        matching = [
+            (p, v) for p, v in candidates
+            if p >= floor and p[0] == floor[0] and p[1] == floor[1]
+        ]
+        if not matching:
+            return None
+        return max(matching, key=lambda x: x[0])[1]
+
+    # >=x.y.z
+    m = re.match(r"^>=(\d+\.\d+\.\d+)$", spec)
+    if m:
+        floor = parse_semver(m.group(1))
+        matching = [(p, v) for p, v in candidates if p >= floor]
+        if not matching:
+            return None
+        return max(matching, key=lambda x: x[0])[1]
+
+    # Fallback: return the latest version
+    return max(candidates, key=lambda x: x[0])[1]
+
+
 def install_npm_dependency(node_modules_dir: str, name: str, version_spec: str) -> None:
     """Download and extract a single npm dependency from the registry."""
     # Skip if already installed (flat node_modules, first version wins)
@@ -206,12 +274,21 @@ def install_npm_dependency(node_modules_dir: str, name: str, version_spec: str) 
         print(f"  Warning: Could not fetch registry data for {name}: HTTP {e.code}")
         return
 
-    version = registry_data.get("dist-tags", {}).get("latest")
+    available_versions = list(registry_data.get("versions", {}).keys())
+    version = resolve_version(version_spec, available_versions)
     if not version:
-        print(f"  Warning: No latest version found for {name}")
+        # Fall back to latest
+        version = registry_data.get("dist-tags", {}).get("latest")
+    if not version:
+        print(f"  Warning: No matching version found for {name}@{version_spec}")
         return
 
-    tarball_url = registry_data["versions"][version]["dist"]["tarball"]
+    version_data = registry_data["versions"].get(version)
+    if not version_data:
+        print(f"  Warning: Version {version} not found in registry for {name}")
+        return
+
+    tarball_url = version_data["dist"]["tarball"]
 
     print(f"  {name}@{version}")
 

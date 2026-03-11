@@ -13,13 +13,12 @@ class TestPackageImport:
 
         assert isinstance(__version__, str)
 
-    def test_version_is_semver(self):
+    def test_version_is_pep440(self):
         from agent_browser import __version__
+        import re
 
-        parts = __version__.split(".")
-        assert len(parts) == 3
-        for part in parts:
-            assert part.isdigit()
+        # Matches semver (x.y.z) and PEP 440 post-releases (x.y.z.postN)
+        assert re.match(r"^\d+\.\d+\.\d+(\.post\d+)?$", __version__)
 
     def test_system_is_normalized(self):
         from agent_browser import SYSTEM
