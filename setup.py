@@ -142,6 +142,7 @@ if __name__ == "__main__":
         entry_points={
             "console_scripts": [
                 "agent-browser=agent_browser.cli:entry_point",
+                "agent-browser-cli=agent_browser.cli:entry_point",
             ],
         },
         python_requires=">=3.10",

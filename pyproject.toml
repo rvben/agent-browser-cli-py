@@ -25,6 +25,7 @@ dynamic = ["version"]
 
 [project.scripts]
 agent-browser = "agent_browser.cli:entry_point"
+agent-browser-cli = "agent_browser.cli:entry_point"
 
 [tool.setuptools]
 packages = ["agent_browser"]
