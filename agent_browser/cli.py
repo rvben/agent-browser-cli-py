@@ -16,6 +16,29 @@ from . import (
 )
 from .node_runtime import ensure_node
 
+# Path to bundled playwright-core CLI (relative to node_modules)
+_PLAYWRIGHT_CLI = os.path.join(NODE_MODULES_DIR, "playwright-core", "cli.js")
+
+
+def _is_install_command() -> bool:
+    """Check if the user is running 'agent-browser install [--with-deps]'."""
+    args = sys.argv[1:]
+    return len(args) >= 1 and args[0] == "install"
+
+
+def _run_install(node_path: str) -> int:
+    """Install Chromium via bundled playwright-core, bypassing npx/npm."""
+    args = sys.argv[2:]  # everything after 'install'
+
+    cmd = [node_path, _PLAYWRIGHT_CLI, "install", "chromium"] + args
+    try:
+        return subprocess.call(cmd)
+    except FileNotFoundError:
+        print(f"Error: Could not execute {cmd[0]}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        return 130
+
 
 def main() -> int:
     if not is_cli_installed():
@@ -38,6 +61,10 @@ def main() -> int:
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    # Handle 'install' directly via bundled playwright-core to avoid npm
+    if _is_install_command():
+        return _run_install(node_path)
 
     env = os.environ.copy()
 

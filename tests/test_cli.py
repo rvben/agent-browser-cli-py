@@ -212,6 +212,89 @@ class TestEnvironmentSetup:
         assert captured_env.get("MY_CUSTOM_VAR") == "hello"
 
 
+class TestInstallIntercept:
+    """Test that 'install' is intercepted and uses bundled playwright-core."""
+
+    def test_install_calls_playwright_core_directly(self):
+        from agent_browser.cli import main
+
+        with (
+            patch("agent_browser.cli.is_cli_installed", return_value=True),
+            patch(
+                "agent_browser.cli.get_cli_binary_path",
+                return_value="/fake/agent-browser",
+            ),
+            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
+            patch("agent_browser.cli._PLAYWRIGHT_CLI", "/fake/node_modules/playwright-core/cli.js"),
+            patch("subprocess.call", return_value=0) as mock_call,
+            patch.object(sys, "argv", ["agent-browser", "install"]),
+        ):
+            result = main()
+
+        assert result == 0
+        mock_call.assert_called_once()
+        args = mock_call.call_args[0][0]
+        assert args[0] == "/cache/node/bin/node"
+        assert "playwright-core/cli.js" in args[1]
+        assert "install" in args
+        assert "chromium" in args
+
+    def test_install_passes_with_deps(self):
+        from agent_browser.cli import main
+
+        with (
+            patch("agent_browser.cli.is_cli_installed", return_value=True),
+            patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
+            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
+            patch("agent_browser.cli._PLAYWRIGHT_CLI", "/fake/pw/cli.js"),
+            patch("subprocess.call", return_value=0) as mock_call,
+            patch.object(sys, "argv", ["agent-browser", "install", "--with-deps"]),
+        ):
+            main()
+
+        args = mock_call.call_args[0][0]
+        assert "--with-deps" in args
+
+    def test_install_does_not_proxy_to_rust_cli(self):
+        from agent_browser.cli import main
+
+        with (
+            patch("agent_browser.cli.is_cli_installed", return_value=True),
+            patch(
+                "agent_browser.cli.get_cli_binary_path",
+                return_value="/fake/agent-browser",
+            ),
+            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
+            patch("agent_browser.cli._PLAYWRIGHT_CLI", "/fake/pw/cli.js"),
+            patch("subprocess.call", return_value=0) as mock_call,
+            patch.object(sys, "argv", ["agent-browser", "install"]),
+        ):
+            main()
+
+        # Should NOT call the Rust binary
+        args = mock_call.call_args[0][0]
+        assert args[0] != "/fake/agent-browser"
+
+    def test_non_install_still_proxies_to_rust_cli(self):
+        from agent_browser.cli import main
+
+        with (
+            patch("agent_browser.cli.is_cli_installed", return_value=True),
+            patch(
+                "agent_browser.cli.get_cli_binary_path",
+                return_value="/fake/agent-browser",
+            ),
+            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
+            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
+            patch("subprocess.call", return_value=0) as mock_call,
+            patch.object(sys, "argv", ["agent-browser", "open", "example.com"]),
+        ):
+            main()
+
+        args = mock_call.call_args[0][0]
+        assert args[0] == "/fake/agent-browser"
+
+
 class TestEntryPoint:
     """Test the entry_point() wrapper."""
 
