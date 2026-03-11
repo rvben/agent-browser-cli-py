@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Downloaded binaries (built, not committed)
+agent_browser/bin/
+agent_browser/node_modules/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# uv
+uv.lock
