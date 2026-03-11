@@ -48,6 +48,9 @@ def main() -> int:
     # Tell the daemon where to find its node_modules
     env["NODE_PATH"] = NODE_MODULES_DIR
 
+    # Prevent npx from hitting the npm registry — all deps are bundled
+    env["NPM_CONFIG_OFFLINE"] = "true"
+
     try:
         return subprocess.call([cli_path] + sys.argv[1:], env=env)
     except FileNotFoundError:

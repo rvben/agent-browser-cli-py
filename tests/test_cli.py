@@ -168,6 +168,27 @@ class TestEnvironmentSetup:
 
         assert captured_env["NODE_PATH"] == "/pkg/node_modules"
 
+    def test_npm_config_offline_set(self):
+        from agent_browser.cli import main
+
+        captured_env = {}
+
+        def capture_env(cmd, env=None):
+            captured_env.update(env or {})
+            return 0
+
+        with (
+            patch("agent_browser.cli.is_cli_installed", return_value=True),
+            patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
+            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
+            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
+            patch("subprocess.call", side_effect=capture_env),
+            patch.object(sys, "argv", ["agent-browser"]),
+        ):
+            main()
+
+        assert captured_env["NPM_CONFIG_OFFLINE"] == "true"
+
     def test_inherits_existing_env(self):
         from agent_browser.cli import main
 
