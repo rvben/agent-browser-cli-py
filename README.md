@@ -1,15 +1,13 @@
-# agent-browser (Python wrapper)
+# agent-browser-cli
 
-A Python wrapper for [agent-browser](https://agent-browser.dev/) that eliminates the need for npm/Node.js installation.
-
-Install via pip/uv and get a fully working `agent-browser` CLI — no npm or Node.js required.
+Install [agent-browser](https://agent-browser.dev/) via pip/uv — no npm required. Node.js is managed automatically.
 
 ## Installation
 
 ```bash
-pip install agent-browser
+pip install agent-browser-cli
 # or
-uv pip install agent-browser
+uv pip install agent-browser-cli
 ```
 
 ## First run
@@ -57,7 +55,7 @@ Downloaded at runtime (cached in `~/.cache/agent-browser-py/`):
 3. **Node.js runtime** (~30MB) — from [nodejs.org](https://nodejs.org/), downloaded on first use
 4. **Chromium** — via `agent-browser install` (Playwright CDN)
 
-No npm or Node.js installation is required on your system.
+No npm installation is required on your system. Node.js is downloaded and managed automatically.
 
 ## Supported platforms
 
