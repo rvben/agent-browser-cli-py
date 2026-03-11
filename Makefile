@@ -2,13 +2,40 @@
 
 SHELL = /bin/bash
 
-AGENT_BROWSER_VERSION ?= 0.17.1
+# Upstream agent-browser version (for downloading binaries/npm package).
+# Override with env var: AGENT_BROWSER_VERSION=0.18.0 make wheels
+AGENT_BROWSER_VERSION ?= $(shell grep '^__agent_browser_version__' agent_browser/version.py | cut -d'"' -f2)
+
+# PyPI package version (may include .postN suffix).
+# Override with env var: PACKAGE_VERSION=0.17.1.post6 make wheels
+PACKAGE_VERSION ?= $(shell grep '^__version__' agent_browser/version.py | cut -d'"' -f2)
 
 # All supported platforms (system-machine)
 PLATFORMS = darwin-arm64 darwin-x86_64 linux-x86_64 linux-arm64 windows-x86_64
 
 version:
-	@echo "agent-browser version: $(AGENT_BROWSER_VERSION)"
+	@echo "Package version:        $(PACKAGE_VERSION)"
+	@echo "Agent-browser version:  $(AGENT_BROWSER_VERSION)"
+
+# Check if a newer agent-browser version exists on npm
+check-upstream:
+	@python3 -c "\
+	import urllib.request, json, sys; \
+	latest = json.loads(urllib.request.urlopen('https://registry.npmjs.org/agent-browser/latest').read())['version']; \
+	current = '$(AGENT_BROWSER_VERSION)'; \
+	print(f'Current: {current}'); \
+	print(f'Latest:  {latest}'); \
+	same = latest == current; \
+	print('Up to date.' if same else f'New version available: {latest}'); \
+	" 2>&1; \
+	latest=$$(python3 -c "import urllib.request, json; print(json.loads(urllib.request.urlopen('https://registry.npmjs.org/agent-browser/latest').read())['version'])"); \
+	if [ "$$latest" != "$(AGENT_BROWSER_VERSION)" ] && [ -n "$${GITHUB_OUTPUT:-}" ]; then \
+		echo "new_version=$$latest" >> $$GITHUB_OUTPUT; \
+	fi
+
+# Generate version.py from PACKAGE_VERSION
+update-version:
+	@python3 update_version.py $(PACKAGE_VERSION)
 
 clean:
 	rm -rf dist build agent_browser.egg-info
@@ -41,7 +68,7 @@ wheel: download-npm download-binary
 	@ls -lh dist/*.whl | tail -1
 
 # Build wheels for all platforms
-wheels: clean download-npm
+wheels: clean update-version download-npm
 	@for platform in $(PLATFORMS); do \
 		system=$${platform%%-*}; \
 		machine=$${platform#*-}; \
@@ -75,8 +102,16 @@ publish-prod:
 
 verify:
 	@uv venv -q /tmp/ab-verify
-	@uv pip install --python /tmp/ab-verify/bin/python --find-links dist agent-browser-cli==$(AGENT_BROWSER_VERSION)
+	@uv pip install --python /tmp/ab-verify/bin/python --find-links dist "agent-browser-cli==$(PACKAGE_VERSION)"
 	@/tmp/ab-verify/bin/agent-browser --version
 	@rm -rf /tmp/ab-verify
 
-.PHONY: version clean download-npm download-binary wheel wheels sdist fmt lint test publish-test publish-prod verify
+# Full end-to-end verification (used in CI, requires linux x86_64 wheel)
+verify-e2e:
+	pip install dist/agent_browser_cli-*-manylinux_2_17_x86_64*.whl
+	agent-browser install --with-deps
+	agent-browser open example.com
+	agent-browser snapshot
+	agent-browser close
+
+.PHONY: version check-upstream update-version clean download-npm download-binary wheel wheels sdist fmt lint test publish-test publish-prod verify verify-e2e

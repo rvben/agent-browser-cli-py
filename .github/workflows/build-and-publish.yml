@@ -1,0 +1,138 @@
+name: Build and Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build and publish (e.g. 0.18.0 or 0.17.1.post6)'
+        required: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+  build:
+    name: Build wheels
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Parse version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            TAG_VERSION="${{ github.event.inputs.version }}"
+          fi
+
+          # Extract upstream version (strip .postN)
+          UPSTREAM_VERSION=$(echo "$TAG_VERSION" | sed 's/\.post[0-9]*//')
+
+          echo "package_version=${TAG_VERSION}" >> $GITHUB_OUTPUT
+          echo "upstream_version=${UPSTREAM_VERSION}" >> $GITHUB_OUTPUT
+          echo "Package version: ${TAG_VERSION}"
+          echo "Upstream version: ${UPSTREAM_VERSION}"
+
+      - name: Build all platform wheels
+        env:
+          AGENT_BROWSER_VERSION: ${{ steps.version.outputs.upstream_version }}
+          PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
+        run: make wheels
+
+      - name: List wheels
+        run: ls -lh dist/
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels
+          path: dist/*.whl
+
+  verify:
+    name: Verify on Linux
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: dist/
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: End-to-end verification
+        run: make verify-e2e
+
+  publish:
+    name: Publish to PyPI
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: dist/
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: make publish-prod
