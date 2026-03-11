@@ -75,6 +75,9 @@ def main() -> int:
     # Tell the daemon where to find its node_modules
     env["NODE_PATH"] = NODE_MODULES_DIR
 
+    # Point the Rust CLI to the bundled daemon code
+    env["AGENT_BROWSER_HOME"] = os.path.join(NODE_MODULES_DIR, "agent-browser")
+
     # Prevent npx from hitting the npm registry — all deps are bundled
     env["NPM_CONFIG_OFFLINE"] = "true"
 
