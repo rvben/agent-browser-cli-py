@@ -8,7 +8,6 @@ build/
 
 # Downloaded binaries (built, not committed)
 agent_browser/bin/
-agent_browser/node_modules/
 
 # OS
 .DS_Store
@@ -19,3 +18,7 @@ agent_browser/node_modules/
 
 # uv
 uv.lock
+
+# Test
+.coverage
+.pytest_cache/

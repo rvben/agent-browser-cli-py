@@ -1,27 +1,18 @@
 # agent-browser-cli
 
-Install [agent-browser](https://agent-browser.dev/) via pip/uv — no npm required. Node.js is managed automatically.
+Install [agent-browser](https://agent-browser.dev/) via pip/uv — no npm required.
 
 ## Installation
 
 ```bash
 pip install agent-browser-cli
 # or
-uv pip install agent-browser-cli
+uvx agent-browser-cli --version
 ```
 
-## First run
+## Setup
 
-On first invocation, Node.js v22 is automatically downloaded to `~/.cache/agent-browser-py/` (one-time, ~30MB):
-
-```bash
-agent-browser --version
-# Downloading Node.js v22.14.0 (one-time setup)...
-# Done.
-# 0.17.1
-```
-
-Then install the browser (Chromium via Playwright):
+Install the browser (Chromium):
 
 ```bash
 agent-browser install
@@ -39,23 +30,16 @@ agent-browser install --with-deps
 agent-browser open example.com
 agent-browser snapshot
 agent-browser click @e1
+agent-browser close
 ```
 
 All commands are proxied directly to the bundled Rust CLI binary.
 
 ## How it works
 
-The wheel bundles:
+The wheel bundles the **platform-specific Rust CLI binary** (~6MB) from [GitHub releases](https://github.com/vercel-labs/agent-browser/releases). That's it — agent-browser 0.20.0+ is fully native Rust with zero npm dependencies.
 
-1. **Rust CLI binary** (~15MB) — from [GitHub releases](https://github.com/vercel-labs/agent-browser/releases)
-2. **Node.js daemon code** (~18MB) — from the [npm registry](https://www.npmjs.com/package/agent-browser) with all JS dependencies
-
-Downloaded at runtime (cached in `~/.cache/agent-browser-py/`):
-
-3. **Node.js runtime** (~30MB) — from [nodejs.org](https://nodejs.org/), downloaded on first use
-4. **Chromium** — via `agent-browser install` (Playwright CDN)
-
-No npm installation is required on your system. Node.js is downloaded and managed automatically.
+On first use, run `agent-browser install` to download Chromium.
 
 ## Supported platforms
 
@@ -75,4 +59,3 @@ make verify                                            # Install and verify
 
 MIT — This wrapper packages upstream software under their respective licenses:
 - agent-browser: [MIT](https://github.com/vercel-labs/agent-browser/blob/main/LICENSE)
-- Node.js: [MIT](https://github.com/nodejs/node/blob/main/LICENSE)

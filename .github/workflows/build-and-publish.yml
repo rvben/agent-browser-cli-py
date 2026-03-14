@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to build and publish (e.g. 0.18.0 or 0.17.1.post6)'
+        description: 'Version to build and publish (e.g. 0.21.0 or 0.20.0.post1)'
         required: true
 
 jobs:

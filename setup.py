@@ -68,7 +68,7 @@ def get_version():
 
 
 class CustomBuildPy(build_py):
-    """Validate that bundled components are downloaded before building.
+    """Validate that the CLI binary is downloaded before building.
 
     Skips validation for editable installs (development mode).
     """
@@ -84,14 +84,6 @@ class CustomBuildPy(build_py):
                 raise RuntimeError(
                     f"CLI binary not found in {bin_dir}. "
                     "Run 'make download-binary' first."
-                )
-
-            node_modules_dir = os.path.join("agent_browser", "node_modules")
-            ab_dir = os.path.join(node_modules_dir, "agent-browser")
-            if not os.path.exists(ab_dir):
-                raise RuntimeError(
-                    f"agent-browser npm package not found in {ab_dir}. "
-                    "Run 'make download-npm' first."
                 )
 
         build_py.run(self)
@@ -128,14 +120,13 @@ if __name__ == "__main__":
         description="Python wrapper for agent-browser CLI — browser automation for AI agents, no npm required",
         long_description=read_long_description(),
         long_description_content_type="text/markdown",
-        url="https://github.com/rvben/agent-browser-wrapper",
+        url="https://github.com/rvben/agent-browser-cli-py",
         author="Ruben J. Jongejan",
         author_email="ruben.jongejan@gmail.com",
         packages=find_packages(),
         package_data={
             "agent_browser": [
                 "bin/*",
-                "node_modules/**/*",
             ],
         },
         include_package_data=True,
