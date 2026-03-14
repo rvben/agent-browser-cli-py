@@ -44,12 +44,6 @@ class TestDirectoryPaths:
 
         assert os.path.isfile(os.path.join(PACKAGE_DIR, "__init__.py"))
 
-    def test_node_modules_dir_is_under_package(self):
-        from agent_browser import PACKAGE_DIR, NODE_MODULES_DIR
-
-        assert NODE_MODULES_DIR.startswith(PACKAGE_DIR)
-        assert NODE_MODULES_DIR.endswith("node_modules")
-
     def test_bin_dir_is_under_package(self):
         from agent_browser import PACKAGE_DIR, BIN_DIR
 

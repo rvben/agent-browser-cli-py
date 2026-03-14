@@ -1,6 +1,5 @@
-"""Tests for agent_browser.cli — CLI entry point and environment setup."""
+"""Tests for agent_browser.cli — CLI entry point."""
 
-import os
 import sys
 import subprocess
 
@@ -29,23 +28,6 @@ class TestMain:
         captured = capsys.readouterr()
         assert "not found" in captured.err
 
-    def test_returns_1_when_node_download_fails(self, capsys):
-        from agent_browser.cli import main
-
-        with (
-            patch("agent_browser.cli.is_cli_installed", return_value=True),
-            patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch(
-                "agent_browser.cli.ensure_node",
-                side_effect=RuntimeError("Network error"),
-            ),
-        ):
-            result = main()
-
-        assert result == 1
-        captured = capsys.readouterr()
-        assert "Network error" in captured.err
-
     def test_proxies_to_cli_binary(self):
         from agent_browser.cli import main
 
@@ -55,8 +37,6 @@ class TestMain:
                 "agent_browser.cli.get_cli_binary_path",
                 return_value="/fake/agent-browser",
             ),
-            patch("agent_browser.cli.ensure_node", return_value="/fake/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
             patch("subprocess.run", return_value=_mock_run()) as mock_run,
             patch.object(sys, "argv", ["agent-browser", "--version"]),
         ):
@@ -74,8 +54,6 @@ class TestMain:
         with (
             patch("agent_browser.cli.is_cli_installed", return_value=True),
             patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/fake/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
             patch("subprocess.run", return_value=_mock_run()) as mock_run,
             patch.object(
                 sys, "argv", ["agent-browser", "open", "example.com", "--headless"]
@@ -92,8 +70,6 @@ class TestMain:
         with (
             patch("agent_browser.cli.is_cli_installed", return_value=True),
             patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/fake/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
             patch("subprocess.run", return_value=_mock_run(returncode=42)),
             patch.object(sys, "argv", ["agent-browser"]),
         ):
@@ -101,14 +77,31 @@ class TestMain:
 
         assert result == 42
 
+    def test_install_command_proxied_to_rust_binary(self):
+        """Install is now handled by the Rust binary, not intercepted."""
+        from agent_browser.cli import main
+
+        with (
+            patch("agent_browser.cli.is_cli_installed", return_value=True),
+            patch(
+                "agent_browser.cli.get_cli_binary_path",
+                return_value="/fake/agent-browser",
+            ),
+            patch("subprocess.run", return_value=_mock_run()) as mock_run,
+            patch.object(sys, "argv", ["agent-browser", "install", "--with-deps"]),
+        ):
+            result = main()
+
+        assert result == 0
+        args = mock_run.call_args[0][0]
+        assert args == ["/fake/agent-browser", "install", "--with-deps"]
+
     def test_keyboard_interrupt_returns_130(self):
         from agent_browser.cli import main
 
         with (
             patch("agent_browser.cli.is_cli_installed", return_value=True),
             patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/fake/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
             patch("subprocess.run", side_effect=KeyboardInterrupt),
             patch.object(sys, "argv", ["agent-browser"]),
         ):
@@ -122,113 +115,12 @@ class TestMain:
         with (
             patch("agent_browser.cli.is_cli_installed", return_value=True),
             patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/fake/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
             patch("subprocess.run", side_effect=FileNotFoundError),
             patch.object(sys, "argv", ["agent-browser"]),
         ):
             result = main()
 
         assert result == 1
-
-
-class TestEnvironmentSetup:
-    """Test that main() sets up the environment correctly for the Rust CLI."""
-
-    def _capture_env_run(self, captured_env):
-        """Return a side_effect for subprocess.run that captures the env."""
-        def side_effect(cmd, **kwargs):
-            captured_env.update(kwargs.get("env", {}))
-            return _mock_run()
-        return side_effect
-
-    def test_node_dir_prepended_to_path(self):
-        from agent_browser.cli import main
-
-        captured_env = {}
-
-        with (
-            patch("agent_browser.cli.is_cli_installed", return_value=True),
-            patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
-            patch("subprocess.run", side_effect=self._capture_env_run(captured_env)),
-            patch.object(sys, "argv", ["agent-browser"]),
-        ):
-            main()
-
-        assert captured_env["PATH"].startswith("/cache/node/bin" + os.pathsep)
-
-    def test_node_path_set_to_node_modules(self):
-        from agent_browser.cli import main
-
-        captured_env = {}
-
-        with (
-            patch("agent_browser.cli.is_cli_installed", return_value=True),
-            patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/pkg/node_modules"),
-            patch("subprocess.run", side_effect=self._capture_env_run(captured_env)),
-            patch.object(sys, "argv", ["agent-browser"]),
-        ):
-            main()
-
-        assert captured_env["NODE_PATH"] == "/pkg/node_modules"
-
-    def test_agent_browser_home_set(self):
-        from agent_browser.cli import main
-
-        captured_env = {}
-
-        with (
-            patch("agent_browser.cli.is_cli_installed", return_value=True),
-            patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
-            patch("subprocess.run", side_effect=self._capture_env_run(captured_env)),
-            patch.object(sys, "argv", ["agent-browser", "open", "example.com"]),
-        ):
-            main()
-
-        assert captured_env["AGENT_BROWSER_HOME"] == os.path.join(
-            "/fake/node_modules", "agent-browser"
-        )
-
-    def test_npm_config_offline_set(self):
-        from agent_browser.cli import main
-
-        captured_env = {}
-
-        with (
-            patch("agent_browser.cli.is_cli_installed", return_value=True),
-            patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
-            patch("subprocess.run", side_effect=self._capture_env_run(captured_env)),
-            patch.object(sys, "argv", ["agent-browser"]),
-        ):
-            main()
-
-        assert captured_env["NPM_CONFIG_OFFLINE"] == "true"
-
-    def test_inherits_existing_env(self):
-        from agent_browser.cli import main
-
-        captured_env = {}
-
-        with (
-            patch("agent_browser.cli.is_cli_installed", return_value=True),
-            patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
-            patch("subprocess.run", side_effect=self._capture_env_run(captured_env)),
-            patch.object(sys, "argv", ["agent-browser"]),
-            patch.dict(os.environ, {"MY_CUSTOM_VAR": "hello"}),
-        ):
-            main()
-
-        assert captured_env.get("MY_CUSTOM_VAR") == "hello"
 
 
 class TestErrorHints:
@@ -241,8 +133,6 @@ class TestErrorHints:
         with (
             patch("agent_browser.cli.is_cli_installed", return_value=True),
             patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/fake/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
             patch("subprocess.run", return_value=_mock_run(returncode=1, stderr=stderr)),
             patch.object(sys, "argv", ["agent-browser", "open", "example.com"]),
         ):
@@ -259,8 +149,22 @@ class TestErrorHints:
         with (
             patch("agent_browser.cli.is_cli_installed", return_value=True),
             patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/fake/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
+            patch("subprocess.run", return_value=_mock_run(returncode=1, stderr=stderr)),
+            patch.object(sys, "argv", ["agent-browser", "open", "example.com"]),
+        ):
+            result = main()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "agent-browser install" in captured.err
+
+    def test_hints_install_on_chrome_not_found(self, capsys):
+        from agent_browser.cli import main
+
+        stderr = b"Chrome not found. Run `agent-browser install` to download Chrome"
+        with (
+            patch("agent_browser.cli.is_cli_installed", return_value=True),
+            patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
             patch("subprocess.run", return_value=_mock_run(returncode=1, stderr=stderr)),
             patch.object(sys, "argv", ["agent-browser", "open", "example.com"]),
         ):
@@ -276,8 +180,6 @@ class TestErrorHints:
         with (
             patch("agent_browser.cli.is_cli_installed", return_value=True),
             patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/fake/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
             patch("subprocess.run", return_value=_mock_run()),
             patch.object(sys, "argv", ["agent-browser", "open", "example.com"]),
         ):
@@ -294,8 +196,6 @@ class TestErrorHints:
         with (
             patch("agent_browser.cli.is_cli_installed", return_value=True),
             patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/fake/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
             patch("subprocess.run", return_value=_mock_run(returncode=1, stderr=stderr)),
             patch.object(sys, "argv", ["agent-browser", "open", "example.com"]),
         ):
@@ -304,89 +204,6 @@ class TestErrorHints:
         assert result == 1
         captured = capsys.readouterr()
         assert "Hint" not in captured.err
-
-
-class TestInstallIntercept:
-    """Test that 'install' is intercepted and uses bundled playwright-core."""
-
-    def test_install_calls_playwright_core_directly(self):
-        from agent_browser.cli import main
-
-        with (
-            patch("agent_browser.cli.is_cli_installed", return_value=True),
-            patch(
-                "agent_browser.cli.get_cli_binary_path",
-                return_value="/fake/agent-browser",
-            ),
-            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
-            patch("agent_browser.cli._PLAYWRIGHT_CLI", "/fake/node_modules/playwright-core/cli.js"),
-            patch("subprocess.call", return_value=0) as mock_call,
-            patch.object(sys, "argv", ["agent-browser", "install"]),
-        ):
-            result = main()
-
-        assert result == 0
-        mock_call.assert_called_once()
-        args = mock_call.call_args[0][0]
-        assert args[0] == "/cache/node/bin/node"
-        assert "playwright-core/cli.js" in args[1]
-        assert "install" in args
-        assert "chromium" in args
-
-    def test_install_passes_with_deps(self):
-        from agent_browser.cli import main
-
-        with (
-            patch("agent_browser.cli.is_cli_installed", return_value=True),
-            patch("agent_browser.cli.get_cli_binary_path", return_value="/fake/binary"),
-            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
-            patch("agent_browser.cli._PLAYWRIGHT_CLI", "/fake/pw/cli.js"),
-            patch("subprocess.call", return_value=0) as mock_call,
-            patch.object(sys, "argv", ["agent-browser", "install", "--with-deps"]),
-        ):
-            main()
-
-        args = mock_call.call_args[0][0]
-        assert "--with-deps" in args
-
-    def test_install_does_not_proxy_to_rust_cli(self):
-        from agent_browser.cli import main
-
-        with (
-            patch("agent_browser.cli.is_cli_installed", return_value=True),
-            patch(
-                "agent_browser.cli.get_cli_binary_path",
-                return_value="/fake/agent-browser",
-            ),
-            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
-            patch("agent_browser.cli._PLAYWRIGHT_CLI", "/fake/pw/cli.js"),
-            patch("subprocess.call", return_value=0) as mock_call,
-            patch.object(sys, "argv", ["agent-browser", "install"]),
-        ):
-            main()
-
-        # Should NOT call the Rust binary
-        args = mock_call.call_args[0][0]
-        assert args[0] != "/fake/agent-browser"
-
-    def test_non_install_still_proxies_to_rust_cli(self):
-        from agent_browser.cli import main
-
-        with (
-            patch("agent_browser.cli.is_cli_installed", return_value=True),
-            patch(
-                "agent_browser.cli.get_cli_binary_path",
-                return_value="/fake/agent-browser",
-            ),
-            patch("agent_browser.cli.ensure_node", return_value="/cache/node/bin/node"),
-            patch("agent_browser.cli.NODE_MODULES_DIR", "/fake/node_modules"),
-            patch("subprocess.run", return_value=_mock_run()) as mock_run,
-            patch.object(sys, "argv", ["agent-browser", "open", "example.com"]),
-        ):
-            main()
-
-        args = mock_run.call_args[0][0]
-        assert args[0] == "/fake/agent-browser"
 
 
 class TestEntryPoint:

@@ -30,7 +30,7 @@ agent-browser-cli = "agent_browser.cli:entry_point"
 [tool.setuptools]
 packages = ["agent_browser"]
 include-package-data = true
-package-data = {"agent_browser" = ["bin/*", "node_modules/**/*"]}
+package-data = {"agent_browser" = ["bin/*"]}
 
 [tool.setuptools.dynamic]
 version = {attr = "agent_browser.version.__version__"}

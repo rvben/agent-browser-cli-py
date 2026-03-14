@@ -136,62 +136,6 @@ class TestBinaryDownloadUrl:
             assert url.endswith(f"/{name}")
 
 
-class TestNodeDownloadUrl:
-    """Test get_node_download_url() for all platforms."""
-
-    def test_darwin_arm64_tar_gz(self):
-        from agent_browser.constants import get_node_download_url
-
-        url = get_node_download_url("22.14.0", "darwin", "arm64")
-        assert (
-            url == "https://nodejs.org/dist/v22.14.0/node-v22.14.0-darwin-arm64.tar.gz"
-        )
-
-    def test_linux_x86_64_tar_gz(self):
-        from agent_browser.constants import get_node_download_url
-
-        url = get_node_download_url("22.14.0", "linux", "x86_64")
-        assert url == "https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.gz"
-
-    def test_windows_is_zip(self):
-        from agent_browser.constants import get_node_download_url
-
-        url = get_node_download_url("22.14.0", "windows", "x86_64")
-        assert url.endswith(".zip")
-        assert "win-x64" in url
-
-    def test_non_windows_is_tar_gz(self):
-        from agent_browser.constants import get_node_download_url
-
-        for system in ("darwin", "linux"):
-            url = get_node_download_url("22.14.0", system, "arm64")
-            assert url.endswith(".tar.gz")
-
-    def test_url_contains_version(self):
-        from agent_browser.constants import get_node_download_url
-
-        url = get_node_download_url("20.11.0", "linux", "x86_64")
-        assert "v20.11.0" in url
-
-
-class TestNpmTarballUrl:
-    """Test get_npm_tarball_url()."""
-
-    def test_url_format(self):
-        from agent_browser.constants import get_npm_tarball_url
-
-        url = get_npm_tarball_url("0.17.1")
-        assert (
-            url == "https://registry.npmjs.org/agent-browser/-/agent-browser-0.17.1.tgz"
-        )
-
-    def test_url_contains_version(self):
-        from agent_browser.constants import get_npm_tarball_url
-
-        url = get_npm_tarball_url("1.0.0")
-        assert "1.0.0" in url
-
-
 class TestWheelPlatformTags:
     """Test that all 5 supported platforms have wheel tags."""
 
@@ -231,17 +175,3 @@ class TestWheelPlatformTags:
         assert set(BUILD_TARGETS) == set(WHEEL_PLATFORM_TAGS.keys())
 
 
-class TestCacheDir:
-    """Test cache directory configuration."""
-
-    def test_cache_dir_is_under_home(self):
-        from agent_browser.constants import CACHE_DIR
-        import os
-
-        home = os.path.expanduser("~")
-        assert CACHE_DIR.startswith(home)
-
-    def test_cache_dir_contains_project_name(self):
-        from agent_browser.constants import CACHE_DIR
-
-        assert "agent-browser-py" in CACHE_DIR

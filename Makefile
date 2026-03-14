@@ -2,12 +2,12 @@
 
 SHELL = /bin/bash
 
-# Upstream agent-browser version (for downloading binaries/npm package).
-# Override with env var: AGENT_BROWSER_VERSION=0.18.0 make wheels
+# Upstream agent-browser version (for downloading binaries).
+# Override with env var: AGENT_BROWSER_VERSION=0.20.0 make wheels
 AGENT_BROWSER_VERSION ?= $(shell grep '^__agent_browser_version__' agent_browser/version.py | cut -d'"' -f2)
 
 # PyPI package version (may include .postN suffix).
-# Override with env var: PACKAGE_VERSION=0.17.1.post6 make wheels
+# Override with env var: PACKAGE_VERSION=0.20.0 make wheels
 PACKAGE_VERSION ?= $(shell grep '^__version__' agent_browser/version.py | cut -d'"' -f2)
 
 # All supported platforms (system-machine)
@@ -40,27 +40,17 @@ update-version:
 clean:
 	rm -rf dist build agent_browser.egg-info
 	rm -rf agent_browser/bin
-	rm -rf agent_browser/node_modules
-
-# Download npm package (shared across all platforms, only done once)
-download-npm:
-	@if [ ! -d agent_browser/node_modules/agent-browser ]; then \
-		echo "Downloading npm package..."; \
-		AGENT_BROWSER_VERSION=$(AGENT_BROWSER_VERSION) uv run python download_binaries.py --npm-only; \
-	else \
-		echo "npm package already downloaded, skipping."; \
-	fi
 
 # Download CLI binary for a specific platform
 # Usage: make download-binary TARGET_SYSTEM=darwin TARGET_MACHINE=arm64
 download-binary:
 	rm -rf agent_browser/bin
 	AGENT_BROWSER_VERSION=$(AGENT_BROWSER_VERSION) \
-		uv run python download_binaries.py --binary-only
+		uv run python download_binaries.py
 
 # Build a wheel for a specific platform
 # Usage: make wheel TARGET_SYSTEM=darwin TARGET_MACHINE=arm64
-wheel: download-npm download-binary
+wheel: download-binary
 	rm -rf build agent_browser.egg-info
 	TARGET_SYSTEM=$(TARGET_SYSTEM) TARGET_MACHINE=$(TARGET_MACHINE) \
 		uv build --wheel
@@ -68,7 +58,7 @@ wheel: download-npm download-binary
 	@ls -lh dist/*.whl | tail -1
 
 # Build wheels for all platforms
-wheels: clean update-version download-npm
+wheels: clean update-version
 	@for platform in $(PLATFORMS); do \
 		system=$${platform%%-*}; \
 		machine=$${platform#*-}; \
@@ -80,8 +70,8 @@ wheels: clean update-version download-npm
 	@echo "=== All wheels ==="
 	@ls -lh dist/*.whl
 
-# Build sdist (no platform-specific binaries)
-sdist: download-npm
+# Build sdist
+sdist:
 	uv build --sdist
 
 fmt:
@@ -114,4 +104,4 @@ verify-e2e:
 	agent-browser snapshot
 	agent-browser close
 
-.PHONY: version check-upstream update-version clean download-npm download-binary wheel wheels sdist fmt lint test publish-test publish-prod verify verify-e2e
+.PHONY: version check-upstream update-version clean download-binary wheel wheels sdist fmt lint test publish-test publish-prod verify verify-e2e
