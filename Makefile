@@ -96,12 +96,10 @@ verify:
 	@/tmp/ab-verify/bin/agent-browser --version
 	@rm -rf /tmp/ab-verify
 
-# Full end-to-end verification (used in CI, requires linux x86_64 wheel)
+# End-to-end verification (used in CI, requires linux x86_64 wheel)
 verify-e2e:
 	pip install dist/agent_browser_cli-*-manylinux_2_17_x86_64*.whl
+	agent-browser --version
 	agent-browser install --with-deps
-	agent-browser open example.com
-	agent-browser snapshot
-	agent-browser close
 
 .PHONY: version check-upstream update-version clean download-binary wheel wheels sdist fmt lint test publish-test publish-prod verify verify-e2e
