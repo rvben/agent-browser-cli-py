@@ -46,7 +46,7 @@ clean:
 download-binary:
 	rm -rf agent_browser/bin
 	AGENT_BROWSER_VERSION=$(AGENT_BROWSER_VERSION) \
-		uv run python download_binaries.py
+		python3 download_binaries.py
 
 # Build a wheel for a specific platform
 # Usage: make wheel TARGET_SYSTEM=darwin TARGET_MACHINE=arm64
@@ -64,7 +64,7 @@ wheels: clean update-version
 		machine=$${platform#*-}; \
 		echo ""; \
 		echo "=== Building wheel for $$system-$$machine ==="; \
-		TARGET_SYSTEM=$$system TARGET_MACHINE=$$machine $(MAKE) download-binary wheel; \
+		TARGET_SYSTEM=$$system TARGET_MACHINE=$$machine $(MAKE) download-binary wheel || exit 1; \
 	done
 	@echo ""
 	@echo "=== All wheels ==="
