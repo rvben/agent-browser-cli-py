@@ -6,67 +6,115 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  check-version:
+  check:
+    name: Compare published version against upstream
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
+    outputs:
+      has_new_version: ${{ steps.compare.outputs.has_new_version }}
+      version: ${{ steps.latest.outputs.version }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Get current version from latest tag
+      # The already-released version comes from PyPI, not from a git tag.
+      # PyPI is the thing this package is trying to keep in sync with, so it is
+      # the only source of truth that cannot drift. A tag-based check would
+      # record "done" the moment a tag existed, so a release that tagged but
+      # failed to publish would be skipped forever; reading PyPI means such a
+      # release is simply retried on the next run.
+      - name: Version currently on PyPI
         id: current
         run: |
-          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          # Strip .postN suffix to get the upstream version
-          VERSION=$(echo "${TAG#v}" | sed 's/\.post[0-9]*//')
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Current upstream version (from tag): ${VERSION}"
+          set -euo pipefail
+          BODY=$(curl -sf https://pypi.org/pypi/agent-browser-cli/json || true)
+          if [ -z "$BODY" ]; then
+            VERSION="0.0.0"
+          else
+            VERSION=$(printf '%s' "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['version'])")
+            VERSION="${VERSION%%.post*}"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: could not read a plain X.Y.Z version from PyPI, got '${VERSION}'" >&2
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Published on PyPI: ${VERSION}"
 
-      - name: Check npm for latest version
+      - name: Latest upstream release on npm
         id: latest
         run: |
+          set -euo pipefail
+          # The dist-tag `latest` excludes prereleases. Requiring a plain X.Y.Z
+          # on top of that keeps anything not valid as a PEP 440 release from
+          # ever reaching a build.
           LATEST=$(curl -sf https://registry.npmjs.org/agent-browser/latest | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
-          echo "version=${LATEST}" >> $GITHUB_OUTPUT
-          echo "Latest npm version: ${LATEST}"
+          if ! [[ "$LATEST" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: latest npm version '${LATEST}' is not a plain X.Y.Z version" >&2
+            exit 1
+          fi
+          echo "version=${LATEST}" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream: ${LATEST}"
 
-      - name: Compare versions
+      - name: Compare
         id: compare
+        env:
+          CURRENT_VERSION: ${{ steps.current.outputs.version }}
+          LATEST_VERSION: ${{ steps.latest.outputs.version }}
         run: |
-          CURRENT="${{ steps.current.outputs.version }}"
-          LATEST="${{ steps.latest.outputs.version }}"
-
+          set -euo pipefail
           IS_NEWER=$(python3 -c "
-          c = tuple(map(int, '$CURRENT'.split('.')))
-          l = tuple(map(int, '$LATEST'.split('.')))
-          print('true' if l > c else 'false')
+          import os
+          def parse(v):
+              return tuple(int(p) for p in v.split('.'))
+          print('true' if parse(os.environ['LATEST_VERSION']) > parse(os.environ['CURRENT_VERSION']) else 'false')
           ")
-
           if [ "$IS_NEWER" = "true" ]; then
-            # Guard against race condition: check tag doesn't already exist
-            if git rev-parse "v${LATEST}" >/dev/null 2>&1; then
-              echo "has_new_version=false" >> $GITHUB_OUTPUT
-              echo "Tag v${LATEST} already exists, skipping."
-            else
-              echo "has_new_version=true" >> $GITHUB_OUTPUT
-              echo "New version available: ${LATEST} > ${CURRENT}"
-            fi
+            echo "has_new_version=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Releasing ${LATEST_VERSION} (PyPI has ${CURRENT_VERSION})"
           else
-            echo "has_new_version=false" >> $GITHUB_OUTPUT
-            echo "Up to date."
+            echo "has_new_version=false" >> "$GITHUB_OUTPUT"
+            echo "Up to date at ${CURRENT_VERSION}."
           fi
 
+  # Calling the release workflow instead of pushing a tag to trigger it is what
+  # lets this run on the default GITHUB_TOKEN: a token-made push deliberately
+  # does not start another workflow, so a tag-triggered design needs a personal
+  # access token that must be created, stored and rotated by hand.
+  release:
+    name: Release
+    needs: check
+    if: needs.check.outputs.has_new_version == 'true'
+    uses: ./.github/workflows/build-and-publish.yml
+    with:
+      version: ${{ needs.check.outputs.version }}
+    secrets: inherit
+
+  # The tag records what shipped; it is deliberately not the trigger. Creating
+  # it only after a successful publish keeps a failed release retryable, since
+  # the next run compares against PyPI and finds the version still missing.
+  tag:
+    name: Tag the released commit
+    needs: [check, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Create and push tag
-        if: steps.compare.outputs.has_new_version == 'true'
+        env:
+          RELEASED_VERSION: ${{ needs.check.outputs.version }}
         run: |
-          VERSION="${{ steps.latest.outputs.version }}"
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
-          git tag -a "v${VERSION}" -m "agent-browser ${VERSION}"
-          git push "https://${{ secrets.GH_PAT }}@github.com/${GITHUB_REPOSITORY}.git" "v${VERSION}"
-          echo "::notice::Created tag v${VERSION} for agent-browser update"
+          set -euo pipefail
+          if git rev-parse "v${RELEASED_VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${RELEASED_VERSION} already exists, nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${RELEASED_VERSION}" -m "agent-browser ${RELEASED_VERSION}"
+          git push origin "refs/tags/v${RELEASED_VERSION}"
+          echo "::notice::Tagged v${RELEASED_VERSION}"
