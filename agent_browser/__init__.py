@@ -6,8 +6,9 @@ Bundles the platform-specific Rust CLI binary for easy installation via pip/uvx.
 
 import os
 
+from .constants import MACHINE as MACHINE
+from .constants import SYSTEM as SYSTEM
 from .version import __version__ as __version__
-from .constants import SYSTEM as SYSTEM, MACHINE as MACHINE
 
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 BIN_DIR = os.path.join(PACKAGE_DIR, "bin")

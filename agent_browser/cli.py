@@ -4,8 +4,8 @@ CLI entry point for agent-browser Python wrapper.
 Proxies all commands to the bundled Rust CLI binary.
 """
 
-import sys
 import subprocess
+import sys
 
 from . import get_cli_binary_path, is_cli_installed
 
@@ -26,9 +26,12 @@ def main() -> int:
     cli_path = get_cli_binary_path()
 
     try:
+        # A proxy passes the child's exit code through, so a non-zero status is
+        # a result to forward rather than an error to raise on.
         result = subprocess.run(
             [cli_path] + sys.argv[1:],
             stderr=subprocess.PIPE,
+            check=False,
         )
         stderr = result.stderr.decode("utf-8", errors="replace")
         if stderr:

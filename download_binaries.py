@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Build-time script to download the platform-specific Rust CLI binary
 from GitHub releases. Called by the Makefile before building the wheel.
@@ -6,8 +5,8 @@ from GitHub releases. Called by the Makefile before building the wheel.
 
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
 
 def download_file(url: str, dest: str) -> None:
@@ -21,7 +20,7 @@ def download_file(url: str, dest: str) -> None:
 
 def download_cli_binary(version: str, system: str, machine: str) -> None:
     """Download the Rust CLI binary from GitHub releases."""
-    from agent_browser.constants import get_binary_name, get_binary_download_url
+    from agent_browser.constants import get_binary_download_url, get_binary_name
 
     bin_dir = os.path.join("agent_browser", "bin")
     os.makedirs(bin_dir, exist_ok=True)
@@ -54,7 +53,7 @@ def main():
     target_machine = os.environ.get("TARGET_MACHINE")
 
     sys.path.insert(0, os.getcwd())
-    from agent_browser.constants import SYSTEM, MACHINE
+    from agent_browser.constants import MACHINE, SYSTEM
 
     system = target_system or SYSTEM
     machine = target_machine or MACHINE

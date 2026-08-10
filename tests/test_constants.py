@@ -1,7 +1,8 @@
 """Tests for agent_browser.constants — platform detection, URL generation, naming."""
 
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 
 class TestPlatformNormalization:
@@ -25,6 +26,7 @@ class TestPlatformNormalization:
         ):
             # Re-import to trigger module-level normalization
             import importlib
+
             import agent_browser.constants as mod
 
             importlib.reload(mod)
@@ -47,6 +49,7 @@ class TestPlatformNormalization:
             patch("platform.machine", return_value=machine_val),
         ):
             import importlib
+
             import agent_browser.constants as mod
 
             importlib.reload(mod)
@@ -58,6 +61,7 @@ class TestPlatformNormalization:
             patch("platform.machine", return_value="riscv64"),
         ):
             import importlib
+
             import agent_browser.constants as mod
 
             importlib.reload(mod)

@@ -1,10 +1,10 @@
 """Tests for agent_browser.cli — CLI entry point."""
 
-import sys
 import subprocess
+import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 def _mock_run(returncode=0, stderr=b""):

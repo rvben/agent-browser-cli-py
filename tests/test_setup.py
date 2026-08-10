@@ -7,10 +7,9 @@ and verify consistency with constants.py.
 
 import os
 import platform
-
-import pytest
 from unittest.mock import patch
 
+import pytest
 
 # Replicate the pure functions from setup.py (they're intentionally inlined there
 # to avoid importing agent_browser at build time)
@@ -96,9 +95,8 @@ class TestGetPlatformTag:
     def test_unsupported_platform_raises(self):
         with patch.dict(
             os.environ, {"TARGET_SYSTEM": "freebsd", "TARGET_MACHINE": "x86_64"}
-        ):
-            with pytest.raises(RuntimeError, match="No wheel platform tag"):
-                get_platform_tag()
+        ), pytest.raises(RuntimeError, match="No wheel platform tag"):
+            get_platform_tag()
 
     def test_falls_back_to_current_platform(self):
         env = os.environ.copy()

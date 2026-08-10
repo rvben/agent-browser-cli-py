@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generate version.py at build time from the package version.
 

@@ -1,7 +1,6 @@
 """Tests for agent_browser/__init__.py — package structure and path helpers."""
 
 import os
-
 from unittest.mock import patch
 
 
@@ -14,8 +13,9 @@ class TestPackageImport:
         assert isinstance(__version__, str)
 
     def test_version_is_pep440(self):
-        from agent_browser import __version__
         import re
+
+        from agent_browser import __version__
 
         # Matches semver (x.y.z) and PEP 440 post-releases (x.y.z.postN)
         assert re.match(r"^\d+\.\d+\.\d+(\.post\d+)?$", __version__)
@@ -45,7 +45,7 @@ class TestDirectoryPaths:
         assert os.path.isfile(os.path.join(PACKAGE_DIR, "__init__.py"))
 
     def test_bin_dir_is_under_package(self):
-        from agent_browser import PACKAGE_DIR, BIN_DIR
+        from agent_browser import BIN_DIR, PACKAGE_DIR
 
         assert BIN_DIR.startswith(PACKAGE_DIR)
         assert BIN_DIR.endswith("bin")
@@ -61,7 +61,7 @@ class TestGetCliBinaryPath:
         assert isinstance(path, str)
 
     def test_path_is_under_bin_dir(self):
-        from agent_browser import get_cli_binary_path, BIN_DIR
+        from agent_browser import BIN_DIR, get_cli_binary_path
 
         path = get_cli_binary_path()
         assert path.startswith(BIN_DIR)

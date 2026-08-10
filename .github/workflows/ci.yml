@@ -1,0 +1,38 @@
+name: CI
+
+# Lint and tests also run inside the release, but only there they gate a
+# publish: a failure is discovered when a version is already due to ship, and
+# the commit that broke it may be weeks old. Running the same make targets on
+# every push moves that discovery to the change that caused it.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test

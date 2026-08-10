@@ -1,16 +1,16 @@
-#!/usr/bin/env python
 """Setup script with custom build steps for agent-browser wrapper."""
 
 import os
 import platform
 import re
 import shutil
-from setuptools import setup, find_packages
-from setuptools.command.build_py import build_py
-from setuptools.command.sdist import sdist
+
+from setuptools import find_packages, setup
 
 # bdist_wheel is built into setuptools >= 70.1
 from setuptools.command.bdist_wheel import bdist_wheel
+from setuptools.command.build_py import build_py
+from setuptools.command.sdist import sdist
 
 # Inline platform tag map — no imports from agent_browser needed
 _WHEEL_PLATFORM_TAGS = {
