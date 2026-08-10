@@ -43,10 +43,12 @@ bdist_wheel = "setup.PlatformBdistWheel"
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
-    # Pinned exactly: uv.lock is not committed, so a range lets every CI run
-    # resolve whatever ruff is newest that day. A release that adds a rule then
-    # fails lint on unchanged code, which blocks publishing. Bump deliberately.
-    "ruff==0.16.2",
+    # The floor records the oldest ruff whose rule set this code satisfies; the
+    # exact version comes from the committed uv.lock. Both matter: without a
+    # lock every CI run resolved whatever ruff was newest that day, and a
+    # release that added a rule failed lint on unchanged code and blocked
+    # publishing.
+    "ruff>=0.16.2",
 ]
 
 [tool.ruff]

@@ -16,9 +16,6 @@ agent_browser/bin/
 .idea/
 .vscode/
 
-# uv
-uv.lock
-
 # Test
 .coverage
 .pytest_cache/
