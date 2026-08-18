@@ -27,13 +27,32 @@ jobs:
         id: current
         run: |
           set -euo pipefail
-          BODY=$(curl -sf https://pypi.org/pypi/agent-browser-cli/json || true)
-          if [ -z "$BODY" ]; then
-            VERSION="0.0.0"
-          else
-            VERSION=$(printf '%s' "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['version'])")
-            VERSION="${VERSION%%.post*}"
-          fi
+          # "PyPI has no such project" and "PyPI could not be asked" are
+          # different facts and must not produce the same version, so the status
+          # code decides and only a 404 is read as nothing published. Answering
+          # 0.0.0 for an unreachable index makes every version look unreleased,
+          # which asks for a publish of something already on the index and then
+          # fails at the upload as a release that looks genuinely broken.
+          BODY=$(mktemp)
+          STATUS=$(curl -s -o "$BODY" -w '%{http_code}' \
+            --retry 3 --retry-all-errors --max-time 30 \
+            https://pypi.org/pypi/agent-browser-cli/json) || {
+            echo "Error: could not reach PyPI" >&2
+            exit 1
+          }
+          case "$STATUS" in
+            200)
+              VERSION=$(python3 -c "import sys,json; print(json.load(sys.stdin)['info']['version'])" < "$BODY")
+              VERSION="${VERSION%%.post*}"
+              ;;
+            404)
+              VERSION="0.0.0"
+              ;;
+            *)
+              echo "Error: PyPI answered ${STATUS}" >&2
+              exit 1
+              ;;
+          esac
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Error: could not read a plain X.Y.Z version from PyPI, got '${VERSION}'" >&2
             exit 1
@@ -48,7 +67,21 @@ jobs:
           # The dist-tag `latest` excludes prereleases. Requiring a plain X.Y.Z
           # on top of that keeps anything not valid as a PEP 440 release from
           # ever reaching a build.
-          LATEST=$(curl -sf https://registry.npmjs.org/agent-browser/latest | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+          #
+          # Read the same way as the PyPI step above, minus its 404 case: an
+          # upstream package that has gone missing is an error, never a version.
+          BODY=$(mktemp)
+          STATUS=$(curl -s -o "$BODY" -w '%{http_code}' \
+            --retry 3 --retry-all-errors --max-time 30 \
+            https://registry.npmjs.org/agent-browser/latest) || {
+            echo "Error: could not reach the npm registry" >&2
+            exit 1
+          }
+          if [ "$STATUS" != "200" ]; then
+            echo "Error: the npm registry answered ${STATUS}" >&2
+            exit 1
+          fi
+          LATEST=$(python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" < "$BODY")
           if ! [[ "$LATEST" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Error: latest npm version '${LATEST}' is not a plain X.Y.Z version" >&2
             exit 1
