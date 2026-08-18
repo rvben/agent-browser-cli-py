@@ -1,0 +1,30 @@
+name: Set up toolchain
+description: Python and the pinned uv that every job in this repository builds with.
+
+# The single home for the build toolchain. Every job in every workflow uses
+# this, so the versions that prove a change on a push are by construction the
+# versions that publish it, and there is no pair of numbers to keep in sync by
+# hand.
+#
+# uv is pinned because it resolves the dev toolchain: leaving it floating
+# reintroduces exactly the drift that committing uv.lock removed, and it would
+# do so inside the publish path, where nothing runs until a release is already
+# due. The same reasoning applies to Python, whose minor version decides which
+# wheels resolve at all.
+#
+# Every job installs both, including the ones that only exercise an
+# already-built wheel and never call uv. Skipping it there would put a step in
+# the release path that no push ever takes, which is the failure this action
+# exists to prevent, and it would save about two seconds in one job.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+
+    - name: Install uv
+      shell: bash
+      run: pip install uv==0.12.5

@@ -33,13 +33,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+      - uses: ./.github/actions/setup-toolchain
 
-      - name: Install uv
-        run: pip install uv
+      - name: Check the lockfile is current
+        run: make lock-check
 
       - name: Lint
         run: make lint
@@ -56,13 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      - name: Install uv
-        run: pip install uv
+      - uses: ./.github/actions/setup-toolchain
 
       # Keyed off inputs.version rather than github.event_name: under
       # workflow_call the event name is the CALLER's event (schedule), so a
@@ -95,24 +86,13 @@ jobs:
           PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
         run: make wheels
 
-      # A wheel built at an unintended version would publish under a name
-      # nobody asked for, so the filenames are checked against the version this
-      # run is releasing before anything leaves the runner. Requiring the count
-      # to match the platform list also catches a platform that silently
-      # dropped out of the build.
+      # The check itself lives in the Makefile so that the rehearsal in ci.yml
+      # runs the same one, and so that the expected wheel count stays tied to
+      # the platform list it is derived from.
       - name: Check wheel versions
         env:
           PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
-        run: |
-          set -euo pipefail
-          ls -lh dist/
-          MATCHING=$(find dist -name "agent_browser_cli-${PACKAGE_VERSION}-*.whl" | wc -l | tr -d ' ')
-          TOTAL=$(find dist -name '*.whl' | wc -l | tr -d ' ')
-          if [ "$MATCHING" -ne 5 ] || [ "$MATCHING" -ne "$TOTAL" ]; then
-            echo "Error: expected 5 wheels at version ${PACKAGE_VERSION}, found ${MATCHING} of ${TOTAL}" >&2
-            exit 1
-          fi
-          echo "All ${TOTAL} wheels are at ${PACKAGE_VERSION}"
+        run: make check-wheels
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -129,10 +109,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+      - uses: ./.github/actions/setup-toolchain
 
       - name: Download wheels
         uses: actions/download-artifact@v4
@@ -140,9 +117,8 @@ jobs:
           name: wheels
           path: dist/
 
-      - name: Install uv
-        run: pip install uv
-
+      # verify-e2e installs the built wheel with pip and then runs the packaged
+      # CLI, which is what a user of this package does.
       - name: End-to-end verification
         run: make verify-e2e
 
@@ -155,13 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      - name: Install uv
-        run: pip install uv
+      - uses: ./.github/actions/setup-toolchain
 
       - name: Download wheels
         uses: actions/download-artifact@v4

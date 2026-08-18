@@ -1,9 +1,9 @@
 name: CI
 
-# Lint and tests also run inside the release, but only there they gate a
-# publish: a failure is discovered when a version is already due to ship, and
-# the commit that broke it may be weeks old. Running the same make targets on
-# every push moves that discovery to the change that caused it.
+# Everything the release does, run on the commit that could break it. Inside
+# the release these same targets gate a publish, so a failure there is
+# discovered when a version is already due to ship and the commit that caused
+# it may be weeks old.
 on:
   push:
     branches:
@@ -23,16 +23,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+      - uses: ./.github/actions/setup-toolchain
 
-      - name: Install uv
-        run: pip install uv
+      - name: Check the lockfile is current
+        run: make lock-check
 
       - name: Lint
         run: make lint
 
       - name: Test
         run: make test
+
+  # Building the wheels and installing one is the rest of the release, and it
+  # used to run only when a release was already due. Both steps have broken
+  # there before: once on the cross-platform binary download, once on
+  # verify-e2e. Rehearsing them on an ordinary push means an upstream packaging
+  # change, a moved asset or a broken install surfaces on a commit rather than
+  # on a publish. Runs independently of the test job so one red result does not
+  # hide the other.
+  rehearse:
+    name: Rehearse the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-toolchain
+
+      - name: Build and check wheels at the current upstream version
+        run: make rehearse-release
+
+      - name: End-to-end verification
+        run: make verify-e2e
