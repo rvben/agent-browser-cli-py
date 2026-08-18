@@ -43,6 +43,9 @@ bdist_wheel = "setup.PlatformBdistWheel"
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    # Lets the tests read the release steps out of the workflow YAML and run
+    # them, rather than restating what those steps are believed to do.
+    "pyyaml>=6.0",
     # The floor records the oldest ruff whose rule set this code satisfies; the
     # exact version comes from the committed uv.lock. Both matter: without a
     # lock every CI run resolved whatever ruff was newest that day, and a
