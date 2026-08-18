@@ -9,6 +9,17 @@ on:
     branches:
       - main
   pull_request:
+  # Releases here are published by a schedule rather than by a push: this
+  # repository took no commits at all between 2026-03-14 and 2026-08-10, while
+  # the package it wraps moved from 0.20 to 0.33. A guard that runs only on a
+  # push would not have run once in those five months, which is most of the
+  # interval a release has to survive. Both jobs run on the schedule, because
+  # the runner image and the actions they call float and can break a release
+  # without anyone touching this repository. Scheduled runs always take the
+  # workflow from the default branch, so this has no effect until it is on
+  # main.
+  schedule:
+    - cron: '17 4 * * *'
   workflow_dispatch:
 
 permissions:
