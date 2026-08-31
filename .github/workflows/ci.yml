@@ -13,7 +13,7 @@ on:
   # repository took no commits at all between 2026-03-14 and 2026-08-10, while
   # the package it wraps moved from 0.20 to 0.33. A guard that runs only on a
   # push would not have run once in those five months, which is most of the
-  # interval a release has to survive. Both jobs run on the schedule, because
+  # interval a release has to survive. Every job runs on the schedule, because
   # the runner image and the actions they call float and can break a release
   # without anyone touching this repository. Scheduled runs always take the
   # workflow from the default branch, so this has no effect until it is on
@@ -52,8 +52,16 @@ jobs:
   # change, a moved asset or a broken install surfaces on a commit rather than
   # on a publish. Runs independently of the test job so one red result does not
   # hide the other.
+  #
+  # Split in two to match the release, which builds the wheels in one job and
+  # installs them in another. Carrying them between jobs is the one part of the
+  # release with no local equivalent: the upload and download exist only because
+  # those jobs are separate machines, so no developer command and no single-job
+  # rehearsal can reach them. Run in one job, both actions stayed untested until
+  # a release depended on them, which is how they came to be several majors
+  # behind with nothing to say whether the newer ones still worked here.
   rehearse:
-    name: Rehearse the release
+    name: Rehearse the release build
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -65,5 +73,34 @@ jobs:
       - name: Build and check wheels at the current upstream version
         run: make rehearse-release
 
+      # The same action, artifact name and path the release build job uses.
+      # Retention is a day: nothing reads these after the run that made them,
+      # where a real release artifact is the input to the publish job.
+      - name: Upload wheels
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: wheels
+          path: dist/*.whl
+          retention-days: 1
+
+  rehearse-verify:
+    name: Rehearse the release verification
+    needs: rehearse
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-toolchain
+
+      - name: Download wheels
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: wheels
+          path: dist/
+
+      # verify-e2e picks its wheel out of dist/ by glob, so a download that put
+      # the files anywhere but there fails this step rather than skipping it.
       - name: End-to-end verification
         run: make verify-e2e

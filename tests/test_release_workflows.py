@@ -1,4 +1,4 @@
-"""Behaviour of the shell steps that decide what gets released.
+"""Behaviour of the release path, in the parts that only a release reaches.
 
 These steps run only when a release is under way, so nothing else exercises
 them and a defect in one surfaces as a broken publish rather than as a red
@@ -6,11 +6,17 @@ commit. Each test pulls the step's script verbatim out of the workflow YAML
 and runs it, so what is asserted here is the code that will run in CI. The
 only substitution is the endpoint URL, which lets a case choose the HTTP
 response a registry gives back.
+
+The handoff of the built wheels between jobs cannot be tested that way, since
+it is not a script: it is two actions, and it exists only because the jobs run
+on separate machines. ci.yml rehearses it instead, and what is checked here is
+that the rehearsal still resembles the thing it stands in for.
 """
 
 import http.server
 import json
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -191,3 +197,60 @@ def test_parse_version(input_version, ref, exit_code, package, upstream):
     assert code == exit_code
     assert outputs.get("package_version") == package
     assert outputs.get("upstream_version") == upstream
+
+
+def only_step_using(workflow, job, action):
+    """The one step in a job that calls the given action, at whatever version."""
+    document = yaml.safe_load((WORKFLOWS / workflow).read_text())
+    found = [
+        step
+        for step in document["jobs"][job]["steps"]
+        if step.get("uses", "").split("@")[0] == action
+    ]
+    assert len(found) == 1, f"{workflow}:{job} has {len(found)} steps using {action}"
+    return found[0]
+
+
+# Moving the wheels between jobs is the only part of the release with no local
+# equivalent, so ci.yml rehearses it on ordinary pushes. It rehearses nothing
+# unless both use the same action at the same commit, under the same artifact
+# name and path: let either side drift and the rehearsal goes on passing while
+# exercising a handoff the release does not perform. Retention is deliberately
+# not compared, being the one setting that should differ.
+@pytest.mark.parametrize(
+    ("action", "release_job", "rehearsal_job"),
+    [
+        ("actions/upload-artifact", "build", "rehearse"),
+        ("actions/download-artifact", "verify", "rehearse-verify"),
+    ],
+    ids=[
+        "the wheels leave the build job the same way",
+        "the wheels arrive at the verify job the same way",
+    ],
+)
+def test_the_rehearsal_moves_the_wheels_as_the_release_does(
+    action, release_job, rehearsal_job
+):
+    release = only_step_using("build-and-publish.yml", release_job, action)
+    rehearsal = only_step_using("ci.yml", rehearsal_job, action)
+
+    # Two bounds on each: the two sides agree, and they agree on a real pinned
+    # commit and a real artifact name rather than on a key neither side sets.
+    assert release["uses"] == rehearsal["uses"]
+    assert re.fullmatch(rf"{re.escape(action)}@[0-9a-f]{{40}}", release["uses"])
+
+    assert release["with"]["name"] == rehearsal["with"]["name"] == "wheels"
+    assert release["with"]["path"] == rehearsal["with"]["path"]
+
+
+# A download whose next step never reads the files would rehearse the transfer
+# and prove nothing about what arrived.
+@pytest.mark.parametrize(
+    ("workflow", "job"),
+    [("build-and-publish.yml", "verify"), ("ci.yml", "rehearse-verify")],
+    ids=["the release installs what it downloaded", "so does the rehearsal"],
+)
+def test_the_downloaded_wheels_are_installed(workflow, job):
+    document = yaml.safe_load((WORKFLOWS / workflow).read_text())
+    commands = [step["run"] for step in document["jobs"][job]["steps"] if "run" in step]
+    assert "make verify-e2e" in commands, f"{workflow}:{job} never installs the wheels"
