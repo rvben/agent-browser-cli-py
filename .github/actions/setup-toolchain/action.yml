@@ -31,7 +31,7 @@ runs:
   using: composite
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v5 # upd: github-releases actions/setup-python
+      uses: actions/setup-python@v7 # upd: github-releases actions/setup-python
       with:
         python-version: '3.13'
 
