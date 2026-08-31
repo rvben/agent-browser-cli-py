@@ -1,0 +1,21 @@
+# Refuse any version published in the last week, whatever invokes upd. A
+# compromised release is most likely to be found and withdrawn inside that
+# window. Nothing here reaches an installed wheel, since this package declares
+# no runtime dependencies; what the window protects is the release machinery
+# itself, which is the part that holds the PyPI token and produces the bytes
+# users install. Living in config rather than in a make target flag is
+# deliberate: a bare `upd --apply` gets the same protection.
+[cooldown]
+default = "7d"
+
+# Pin every action to a commit SHA with its version in a trailing comment. The
+# jobs that hand the wheels between build, verify and publish do not run outside
+# a release, so a floating tag that moved to a broken or hostile release would
+# first take effect while a version was already shipping. Leaving this on is
+# what keeps the pins from going stale rather than merely frozen: upd verifies
+# each SHA against its tag and moves both forward together.
+#
+# This does not reach .github/actions/setup-toolchain/action.yml, which upd
+# reads as an annotated file rather than as a workflow. The pins there are held
+# at a version by the annotations beside them; see the comment in that file.
+update_action_shas = true

@@ -16,15 +16,25 @@ description: Python and the pinned uv that every job in this repository builds w
 # already-built wheel and never call uv. Skipping it there would put a step in
 # the release path that no push ever takes, which is the failure this action
 # exists to prevent, and it would save about two seconds in one job.
+#
+# Both pins carry an upd annotation, which is what puts them under
+# `make check-deps`. upd discovers .github/workflows/ and reads what it finds
+# there as workflows; a composite action is in neither category, so it is passed
+# by hand and read by the annotated reader instead. That reader reports nothing
+# at all for a version it was not told about, so without these two comments the
+# most widely used pin in the repository would have gone stale silently while
+# the check reported everything current. It requires the source and the package
+# beside the version on the same line, and .updrc.toml's SHA pinning does not
+# reach a file read this way, so these stay on a tag.
 
 runs:
   using: composite
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v5 # upd: github-releases actions/setup-python
       with:
         python-version: '3.13'
 
     - name: Install uv
       shell: bash
-      run: pip install uv==0.12.5
+      run: pip install uv==0.12.5 # upd: pypi uv

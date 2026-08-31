@@ -164,4 +164,28 @@ verify-e2e:
 	agent-browser --version
 	agent-browser install --with-deps
 
-.PHONY: version check-upstream update-version clean download-binary wheel wheels check-wheels rehearse-release sdist fmt lock-check lint test publish-test publish-prod verify verify-e2e
+# upd reads the GitHub API for action versions, which is rate limited to 60 an
+# hour unauthenticated and will start answering errors mid-run. A token from the
+# environment is preferred so CI can supply one; gh's is the local fallback.
+UPD_TOKEN = GITHUB_TOKEN=$${GITHUB_TOKEN:-$$(gh auth token 2>/dev/null)}
+
+# Both paths are named because one of them is not discoverable. upd walks
+# .github/workflows/ on its own, but never .github/actions/*/action.yml, and a
+# composite action it is handed explicitly is read as an annotated file rather
+# than as a workflow. Dropping the second path costs no error and no warning:
+# the toolchain every job in this repository depends on simply stops being
+# checked, and check-deps keeps reporting everything current.
+UPD_PATHS = . .github/actions/setup-toolchain/action.yml
+UPD_LANGS = python,actions,annotated
+
+update-deps:
+	@$(UPD_TOKEN) upd --apply --max-bump minor --lang $(UPD_LANGS) $(UPD_PATHS)
+
+# Majors are precisely what update-deps will never report: it exits 0 saying
+# nothing is outdated while counting them as capped. That silence is how a
+# deprecated action runtime goes unnoticed until it breaks a release. This
+# reports everything and exits 1 when anything is behind.
+check-deps:
+	@$(UPD_TOKEN) upd --dry-run --lang $(UPD_LANGS) $(UPD_PATHS)
+
+.PHONY: version check-upstream update-version clean download-binary wheel wheels check-wheels rehearse-release sdist fmt lock-check lint test publish-test publish-prod verify verify-e2e update-deps check-deps
