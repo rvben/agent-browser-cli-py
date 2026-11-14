@@ -1,8 +1,10 @@
 """Setup script with custom build steps for agent-browser wrapper."""
 
+import hashlib
+import json
 import os
-import platform
 import re
+import runpy
 import shutil
 
 from setuptools import find_packages, setup
@@ -12,38 +14,29 @@ from setuptools.command.bdist_wheel import bdist_wheel
 from setuptools.command.build_py import build_py
 from setuptools.command.sdist import sdist
 
-# Inline platform tag map — no imports from agent_browser needed
-_WHEEL_PLATFORM_TAGS = {
-    ("darwin", "arm64"): "macosx_11_0_arm64",
-    ("darwin", "x86_64"): "macosx_10_9_x86_64",
-    ("linux", "x86_64"): "manylinux_2_17_x86_64.manylinux2014_x86_64",
-    ("linux", "arm64"): "manylinux_2_17_aarch64.manylinux2014_aarch64",
-    ("windows", "x86_64"): "win_amd64",
-}
+# Execute the dependency-free constants file without importing the package.
+# Build isolation must not import agent_browser or depend on its installed version.
+_CONSTANTS = runpy.run_path(
+    os.path.join(os.path.dirname(__file__), "agent_browser", "constants.py")
+)
+_WHEEL_PLATFORM_TAGS = _CONSTANTS["WHEEL_PLATFORM_TAGS"]
 
 
 def _detect_platform():
-    """Detect normalized system/machine without importing agent_browser."""
-    system = platform.system().lower()
-    machine = platform.machine().lower()
-    if system.startswith("darwin"):
-        system = "darwin"
-    elif system.startswith("linux"):
-        system = "linux"
-    elif system.startswith("win"):
-        system = "windows"
-    if machine in ("amd64", "x86_64", "x64"):
-        machine = "x86_64"
-    elif machine in ("arm64", "aarch64", "armv8"):
-        machine = "arm64"
-    return system, machine
+    return _CONSTANTS["SYSTEM"], _CONSTANTS["MACHINE"]
+
+
+def _target_platform():
+    default_system, default_machine = _detect_platform()
+    return (
+        os.environ.get("TARGET_SYSTEM") or default_system,
+        os.environ.get("TARGET_MACHINE") or default_machine,
+    )
 
 
 def get_platform_tag():
     """Get the wheel platform tag from TARGET_SYSTEM/TARGET_MACHINE env vars."""
-    default_system, default_machine = _detect_platform()
-    system = os.environ.get("TARGET_SYSTEM", default_system)
-    machine = os.environ.get("TARGET_MACHINE", default_machine)
+    system, machine = _target_platform()
     tag = _WHEEL_PLATFORM_TAGS.get((system, machine))
     if not tag:
         raise RuntimeError(
@@ -80,11 +73,50 @@ class CustomBuildPy(build_py):
         # Skip validation for editable installs
         if not self.editable_mode:
             bin_dir = os.path.join("agent_browser", "bin")
-            if not os.path.exists(bin_dir) or not os.listdir(bin_dir):
+            if not os.path.isfile(
+                os.path.join(
+                    bin_dir, _CONSTANTS["get_binary_name"](*_target_platform())
+                )
+            ):
                 raise RuntimeError(
                     f"CLI binary not found in {bin_dir}. "
                     "Run 'make download-binary' first."
                 )
+
+            required = [
+                "upstream.json",
+                "skill-data/core/SKILL.md",
+                "licenses/agent-browser-LICENSE",
+                "licenses/LICENSE-axe-core.txt",
+                "licenses/LICENSE-axe-core-THIRD-PARTY.txt",
+            ]
+            for resource in required:
+                if not os.path.isfile(os.path.join("agent_browser", resource)):
+                    raise RuntimeError(
+                        f"Missing upstream resource {resource}. Run 'make download-assets' first."
+                    )
+
+            with open("agent_browser/upstream.json") as f:
+                upstream = json.load(f)
+            if upstream["version"] != re.sub(r"\.post\d+$", "", version):
+                raise RuntimeError("Runtime assets do not match the package version")
+            if not upstream.get("files") or not upstream.get("binaries"):
+                raise RuntimeError(
+                    "Runtime provenance is missing checksums. Run 'make download-assets' first."
+                )
+            for name, digest in upstream["files"].items():
+                with open(os.path.join("agent_browser", name), "rb") as f:
+                    if hashlib.sha256(f.read()).hexdigest() != digest:
+                        raise RuntimeError(
+                            f"Runtime resource checksum mismatch: {name}"
+                        )
+            binary_name = _CONSTANTS["get_binary_name"](*_target_platform())
+            with open(os.path.join(bin_dir, binary_name), "rb") as f:
+                if (
+                    "sha256:" + hashlib.sha256(f.read()).hexdigest()
+                    != upstream["binaries"][binary_name]
+                ):
+                    raise RuntimeError(f"Binary checksum mismatch: {binary_name}")
 
         build_py.run(self)
 
@@ -127,6 +159,10 @@ if __name__ == "__main__":
         package_data={
             "agent_browser": [
                 "bin/*",
+                "skill-data/**/*",
+                "skills/**/*",
+                "licenses/*",
+                "upstream.json",
             ],
         },
         include_package_data=True,

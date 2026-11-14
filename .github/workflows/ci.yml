@@ -71,6 +71,8 @@ jobs:
       - uses: ./.github/actions/setup-toolchain
 
       - name: Build and check wheels at the current upstream version
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: make rehearse-release
 
       # The same action, artifact name and path the release build job uses.
@@ -104,3 +106,8 @@ jobs:
       # the files anywhere but there fails this step rather than skipping it.
       - name: End-to-end verification
         run: make verify-e2e
+
+  verify-platforms:
+    name: Rehearse all platform installs
+    needs: rehearse
+    uses: ./.github/workflows/verify-platforms.yml

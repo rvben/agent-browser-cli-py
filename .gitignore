@@ -19,3 +19,9 @@ agent_browser/bin/
 # Test
 .coverage
 .pytest_cache/
+
+# Version-matched upstream runtime assets (downloaded during builds)
+agent_browser/skill-data/
+agent_browser/skills/
+agent_browser/licenses/
+agent_browser/upstream.json

@@ -11,7 +11,7 @@ AGENT_BROWSER_VERSION ?= $(shell grep '^__agent_browser_version__' agent_browser
 PACKAGE_VERSION ?= $(shell grep '^__version__' agent_browser/version.py | cut -d'"' -f2)
 
 # All supported platforms (system-machine)
-PLATFORMS = darwin-arm64 darwin-x86_64 linux-x86_64 linux-arm64 windows-x86_64
+PLATFORMS = darwin-arm64 darwin-x86_64 linux-x86_64 linux-arm64 windows-x86_64 linux-musl-x86_64 linux-musl-arm64
 
 version:
 	@echo "Package version:        $(PACKAGE_VERSION)"
@@ -39,7 +39,7 @@ update-version:
 
 clean:
 	rm -rf dist build agent_browser.egg-info
-	rm -rf agent_browser/bin
+	rm -rf agent_browser/bin agent_browser/skill-data agent_browser/skills agent_browser/licenses agent_browser/upstream.json
 
 # Download CLI binary for a specific platform
 # Usage: make download-binary TARGET_SYSTEM=darwin TARGET_MACHINE=arm64
@@ -50,40 +50,37 @@ download-binary:
 
 # Build a wheel for a specific platform
 # Usage: make wheel TARGET_SYSTEM=darwin TARGET_MACHINE=arm64
-wheel: download-binary
+wheel: download-assets
+	$(MAKE) download-binary
 	rm -rf build agent_browser.egg-info
 	TARGET_SYSTEM=$(TARGET_SYSTEM) TARGET_MACHINE=$(TARGET_MACHINE) \
 		uv build --wheel
 	rm -rf agent_browser/bin
 	@ls -lht dist/*.whl | head -1
 
-# Build wheels for all platforms
-wheels: clean update-version
+# Download version-matched skills, references, templates, and license notices.
+download-assets:
+	AGENT_BROWSER_VERSION=$(AGENT_BROWSER_VERSION) python3 download_binaries.py --assets
+
+# Build all platforms sequentially, even when make is invoked with -j.
+wheels:
+	$(MAKE) clean
+	$(MAKE) update-version
 	@for platform in $(PLATFORMS); do \
-		system=$${platform%%-*}; \
-		machine=$${platform#*-}; \
+		system=$${platform%-*}; \
+		machine=$${platform##*-}; \
 		echo ""; \
 		echo "=== Building wheel for $$system-$$machine ==="; \
-		TARGET_SYSTEM=$$system TARGET_MACHINE=$$machine $(MAKE) download-binary wheel || exit 1; \
+		TARGET_SYSTEM=$$system TARGET_MACHINE=$$machine $(MAKE) wheel || exit 1; \
 	done
 	@echo ""
 	@echo "=== All wheels ==="
 	@ls -lh dist/*.whl
 
-# A wheel built at an unintended version would publish under a name nobody
-# asked for, so the filenames are checked against the version being built
-# before anything leaves the machine. The expected count comes from PLATFORMS
-# rather than a literal, so a platform that silently drops out of the build is
-# caught by the same check that a version mismatch is.
+# Gate publication on the complete platform set and actual wheel contents.
+# The expected names and target binaries come from the shared platform tag map.
 check-wheels:
-	@ls -lh dist/
-	@matching=$$(find dist -name "agent_browser_cli-$(PACKAGE_VERSION)-*.whl" | wc -l | tr -d ' '); \
-	total=$$(find dist -name '*.whl' | wc -l | tr -d ' '); \
-	if [ "$$matching" -ne $(words $(PLATFORMS)) ] || [ "$$matching" -ne "$$total" ]; then \
-		echo "Error: expected $(words $(PLATFORMS)) wheels at version $(PACKAGE_VERSION), found $$matching of $$total" >&2; \
-		exit 1; \
-	fi; \
-	echo "All $$total wheels are at $(PACKAGE_VERSION)"
+	python3 scripts/check_wheels.py $(PACKAGE_VERSION)
 
 # Builds the release that would ship today, so the download and packaging steps
 # are exercised by an ordinary push instead of first running when a version is
@@ -118,7 +115,7 @@ rehearse-release:
 	$(MAKE) check-wheels PACKAGE_VERSION=$$latest
 
 # Build sdist
-sdist:
+sdist: download-assets
 	uv build --sdist
 
 fmt:
@@ -153,16 +150,18 @@ publish-prod:
 	uv run --with twine --no-project -- twine upload --skip-existing --repository pypi dist/*
 
 verify:
-	@uv venv -q /tmp/ab-verify
-	@uv pip install --python /tmp/ab-verify/bin/python --find-links dist "agent-browser-cli==$(PACKAGE_VERSION)"
-	@/tmp/ab-verify/bin/agent-browser --version
-	@rm -rf /tmp/ab-verify
+	@temporary=$$(mktemp -d); \
+	trap 'rm -rf "$$temporary"' EXIT; \
+	uv venv -q "$$temporary/venv" && \
+	uv pip install --python "$$temporary/venv/bin/python" --no-index --find-links dist "agent-browser-cli==$(PACKAGE_VERSION)" && \
+	PATH="$$temporary/venv/bin:$$PATH" "$$temporary/venv/bin/python" scripts/verify_install.py
 
 # End-to-end verification (used in CI, requires linux x86_64 wheel)
 verify-e2e:
-	pip install dist/agent_browser_cli-*-manylinux_2_17_x86_64*.whl
-	agent-browser --version
+	pip install dist/agent_browser_cli-*-manylinux_2_28_x86_64.whl
+	python3 scripts/verify_install.py
 	agent-browser install --with-deps
+	python3 scripts/verify_browser.py
 
 # upd reads the GitHub API for action versions, which is rate limited to 60 an
 # hour unauthenticated and will start answering errors mid-run. A token from the
@@ -188,4 +187,4 @@ update-deps:
 check-deps:
 	@$(UPD_TOKEN) upd --dry-run --lang $(UPD_LANGS) $(UPD_PATHS)
 
-.PHONY: version check-upstream update-version clean download-binary wheel wheels check-wheels rehearse-release sdist fmt lock-check lint test publish-test publish-prod verify verify-e2e update-deps check-deps
+.PHONY: version check-upstream update-version clean download-binary download-assets wheel wheels check-wheels rehearse-release sdist fmt lock-check lint test publish-test publish-prod verify verify-e2e update-deps check-deps

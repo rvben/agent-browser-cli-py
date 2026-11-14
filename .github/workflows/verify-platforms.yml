@@ -1,0 +1,51 @@
+name: Verify installed platform wheels
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Install on ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: macOS ARM64, os: macos-15, alpine: false}
+          - {name: macOS x64, os: macos-15-intel, alpine: false}
+          - {name: Linux ARM64, os: ubuntu-24.04-arm, alpine: false}
+          - {name: Linux x64, os: ubuntu-24.04, alpine: false}
+          - {name: Alpine ARM64, os: ubuntu-24.04-arm, alpine: true}
+          - {name: Alpine x64, os: ubuntu-24.04, alpine: true}
+          - {name: Windows x64, os: windows-latest, alpine: false}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-toolchain
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: wheels
+          path: dist/
+      - name: Install and verify the host wheel
+        if: ${{ !matrix.alpine }}
+        shell: bash
+        run: |
+          python -m venv .wheel-verify
+          if [ -d .wheel-verify/Scripts ]; then
+            export PATH="$PWD/.wheel-verify/Scripts:$PATH"
+          else
+            export PATH="$PWD/.wheel-verify/bin:$PATH"
+          fi
+          python -m pip install --no-index --find-links dist agent-browser-cli
+          python scripts/verify_install.py
+      - name: Install and verify the musl wheel
+        if: matrix.alpine
+        shell: bash
+        run: |
+          docker run --rm -v "$PWD:/work:ro" python:3.12-alpine@sha256:c5ba3deef00c7758561a0f03c26f44f10589263d40e732b8748e0d1f38f6dd89 sh -ec '
+            pip install --no-index --find-links /work/dist agent-browser-cli
+            python /work/scripts/verify_install.py
+          '

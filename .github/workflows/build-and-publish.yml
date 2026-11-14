@@ -82,6 +82,7 @@ jobs:
 
       - name: Build all platform wheels
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           AGENT_BROWSER_VERSION: ${{ steps.version.outputs.upstream_version }}
           PACKAGE_VERSION: ${{ steps.version.outputs.package_version }}
         run: make wheels
@@ -122,9 +123,14 @@ jobs:
       - name: End-to-end verification
         run: make verify-e2e
 
+  verify-platforms:
+    name: Verify all platform installs
+    needs: build
+    uses: ./.github/workflows/verify-platforms.yml
+
   publish:
     name: Publish to PyPI
-    needs: verify
+    needs: [verify, verify-platforms]
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=70.1.0"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,7 +10,8 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = "MIT AND Apache-2.0 AND MPL-2.0 AND ISC"
+license-files = ["LICENSE", "agent_browser/licenses/*"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -30,7 +31,7 @@ agent-browser-cli = "agent_browser.cli:entry_point"
 [tool.setuptools]
 packages = ["agent_browser"]
 include-package-data = true
-package-data = {"agent_browser" = ["bin/*"]}
+package-data = {"agent_browser" = ["bin/*", "skill-data/**/*", "skills/**/*", "licenses/*", "upstream.json"]}
 
 [tool.setuptools.dynamic]
 version = {attr = "agent_browser.version.__version__"}
@@ -42,6 +43,7 @@ bdist_wheel = "setup.PlatformBdistWheel"
 
 [dependency-groups]
 dev = [
+    "setuptools>=77.0.3",
     "pytest>=9.1.1",
     # Lets the tests read the release steps out of the workflow YAML and run
     # them, rather than restating what those steps are believed to do.

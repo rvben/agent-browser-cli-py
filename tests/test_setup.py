@@ -1,133 +1,127 @@
-"""Tests for setup.py — platform tag generation and build validation.
+"""Exercise the actual build backend instead of copying its implementation."""
 
-setup.py imports setuptools which is a build dependency, not a runtime dep.
-We test the pure logic by reimplementing the detection inline (same as setup.py does)
-and verify consistency with constants.py.
-"""
-
-import os
-import platform
+import hashlib
+import json
+import runpy
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-# Replicate the pure functions from setup.py (they're intentionally inlined there
-# to avoid importing agent_browser at build time)
-_WHEEL_PLATFORM_TAGS = {
-    ("darwin", "arm64"): "macosx_11_0_arm64",
-    ("darwin", "x86_64"): "macosx_10_9_x86_64",
-    ("linux", "x86_64"): "manylinux_2_17_x86_64.manylinux2014_x86_64",
-    ("linux", "arm64"): "manylinux_2_17_aarch64.manylinux2014_aarch64",
-    ("windows", "x86_64"): "win_amd64",
-}
+ROOT = Path(__file__).resolve().parent.parent
 
 
-def _detect_platform():
-    system = platform.system().lower()
-    machine = platform.machine().lower()
-    if system.startswith("darwin"):
-        system = "darwin"
-    elif system.startswith("linux"):
-        system = "linux"
-    elif system.startswith("win"):
-        system = "windows"
-    if machine in ("amd64", "x86_64", "x64"):
-        machine = "x86_64"
-    elif machine in ("arm64", "aarch64", "armv8"):
-        machine = "arm64"
-    return system, machine
+@pytest.fixture
+def backend():
+    return runpy.run_path(str(ROOT / "setup.py"))
 
 
-def get_platform_tag():
-    default_system, default_machine = _detect_platform()
-    system = os.environ.get("TARGET_SYSTEM", default_system)
-    machine = os.environ.get("TARGET_MACHINE", default_machine)
-    tag = _WHEEL_PLATFORM_TAGS.get((system, machine))
-    if not tag:
-        raise RuntimeError(
-            f"No wheel platform tag for {system}-{machine}. "
-            f"Supported: {list(_WHEEL_PLATFORM_TAGS.keys())}"
-        )
-    return tag
+def test_build_and_runtime_use_identical_platform_tags(backend):
+    from agent_browser.constants import WHEEL_PLATFORM_TAGS
+
+    assert backend["_WHEEL_PLATFORM_TAGS"] == WHEEL_PLATFORM_TAGS
+    assert len(WHEEL_PLATFORM_TAGS) == 7
 
 
-class TestDetectPlatform:
-    """Test _detect_platform() normalization logic (inlined in setup.py)."""
+@pytest.mark.parametrize(
+    "system,machine,tag",
+    [
+        ("darwin", "arm64", "macosx_11_0_arm64"),
+        ("darwin", "x86_64", "macosx_10_12_x86_64"),
+        ("linux", "x86_64", "manylinux_2_28_x86_64"),
+        ("linux", "arm64", "manylinux_2_28_aarch64"),
+        ("linux-musl", "x86_64", "musllinux_1_2_x86_64"),
+        ("linux-musl", "arm64", "musllinux_1_2_aarch64"),
+        ("windows", "x86_64", "win_amd64"),
+    ],
+)
+def test_cross_build_tags(backend, monkeypatch, system, machine, tag):
+    monkeypatch.setenv("TARGET_SYSTEM", system)
+    monkeypatch.setenv("TARGET_MACHINE", machine)
+    assert backend["get_platform_tag"]() == tag
 
-    @pytest.mark.parametrize(
-        "system_val, machine_val, expected",
-        [
-            ("Darwin", "arm64", ("darwin", "arm64")),
-            ("Darwin", "x86_64", ("darwin", "x86_64")),
-            ("Linux", "x86_64", ("linux", "x86_64")),
-            ("Linux", "aarch64", ("linux", "arm64")),
-            ("Windows", "AMD64", ("windows", "x86_64")),
-            ("Linux", "armv8", ("linux", "arm64")),
-            ("Linux", "x64", ("linux", "x86_64")),
-        ],
+
+def test_unsupported_target_fails(backend, monkeypatch):
+    monkeypatch.setenv("TARGET_SYSTEM", "freebsd")
+    with pytest.raises(RuntimeError, match="No wheel platform tag"):
+        backend["get_platform_tag"]()
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["bin", "skills", "licenses", "version", "content", "binary-content", None],
+)
+def test_build_rejects_incomplete_or_mismatched_resources(
+    backend, monkeypatch, tmp_path, missing
+):
+    from setuptools import Distribution
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TARGET_SYSTEM", "linux")
+    monkeypatch.setenv("TARGET_MACHINE", "x86_64")
+    package = tmp_path / "agent_browser"
+    files = {
+        "version.py": '__version__ = "0.43.0.post1"',
+        "bin/agent-browser-linux-x64": "binary",
+        "skill-data/core/SKILL.md": "skill",
+        "licenses/agent-browser-LICENSE": "license",
+        "licenses/LICENSE-axe-core.txt": "license",
+        "licenses/LICENSE-axe-core-THIRD-PARTY.txt": "license",
+        "upstream.json": '{"version":"0.43.0"}',
+    }
+    for name, content in files.items():
+        p = package / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content)
+    manifest = {
+        "version": "0.43.0",
+        "files": {
+            name: hashlib.sha256(content.encode()).hexdigest()
+            for name, content in files.items()
+            if name.startswith(("licenses/", "skill-data/"))
+        },
+        "binaries": {
+            "agent-browser-linux-x64": "sha256:" + hashlib.sha256(b"binary").hexdigest()
+        },
+    }
+    (package / "upstream.json").write_text(json.dumps(manifest))
+    if missing == "content":
+        (package / "skill-data/core/SKILL.md").write_text("corrupt")
+    elif missing == "binary-content":
+        (package / "bin/agent-browser-linux-x64").write_text("corrupt")
+    elif missing == "version":
+        (package / "upstream.json").write_text('{"version":"0.42.0"}')
+    elif missing in ("bin", "skills", "licenses"):
+        name = {
+            "bin": "bin/agent-browser-linux-x64",
+            "skills": "skill-data/core/SKILL.md",
+            "licenses": "licenses/agent-browser-LICENSE",
+        }[missing]
+        (package / name).unlink()
+    command = backend["CustomBuildPy"](Distribution())
+    command.ensure_finalized()
+    if missing is None:
+        with patch("setuptools.command.build_py.build_py.run") as build:
+            command.run()
+            build.assert_called_once()
+        return
+    expected = {
+        "bin": "CLI binary not found",
+        "skills": "Missing upstream resource skill-data",
+        "licenses": "Missing upstream resource licenses",
+        "version": "Runtime assets do not match",
+        "content": "Runtime resource checksum mismatch",
+        "binary-content": "Binary checksum mismatch",
+    }
+    with pytest.raises(RuntimeError, match=expected[missing]):
+        command.run()
+
+
+def test_empty_target_variables_use_host_defaults(backend, monkeypatch):
+    monkeypatch.setenv("TARGET_SYSTEM", "")
+    monkeypatch.setenv("TARGET_MACHINE", "")
+    system, machine = backend["_detect_platform"]()
+    assert (
+        backend["get_platform_tag"]()
+        == backend["_WHEEL_PLATFORM_TAGS"][(system, machine)]
     )
-    def test_normalizes_correctly(self, system_val, machine_val, expected):
-        with (
-            patch("platform.system", return_value=system_val),
-            patch("platform.machine", return_value=machine_val),
-        ):
-            assert _detect_platform() == expected
-
-
-class TestGetPlatformTag:
-    """Test get_platform_tag() uses env vars and falls back to detection."""
-
-    def test_uses_target_env_vars(self):
-        with patch.dict(
-            os.environ, {"TARGET_SYSTEM": "linux", "TARGET_MACHINE": "arm64"}
-        ):
-            tag = get_platform_tag()
-        assert "aarch64" in tag or "arm64" in tag
-
-    def test_all_supported_platforms_have_tags(self):
-        for (system, machine), expected_tag in _WHEEL_PLATFORM_TAGS.items():
-            with patch.dict(
-                os.environ, {"TARGET_SYSTEM": system, "TARGET_MACHINE": machine}
-            ):
-                tag = get_platform_tag()
-            assert tag == expected_tag
-
-    def test_unsupported_platform_raises(self):
-        with patch.dict(
-            os.environ, {"TARGET_SYSTEM": "freebsd", "TARGET_MACHINE": "x86_64"}
-        ), pytest.raises(RuntimeError, match="No wheel platform tag"):
-            get_platform_tag()
-
-    def test_falls_back_to_current_platform(self):
-        env = os.environ.copy()
-        env.pop("TARGET_SYSTEM", None)
-        env.pop("TARGET_MACHINE", None)
-        with patch.dict(os.environ, env, clear=True):
-            tag = get_platform_tag()
-            assert isinstance(tag, str)
-            assert len(tag) > 0
-
-
-class TestWheelPlatformTagsConsistency:
-    """Verify setup.py tags match constants.py tags."""
-
-    def test_setup_tags_match_constants(self):
-        from agent_browser.constants import WHEEL_PLATFORM_TAGS
-
-        assert _WHEEL_PLATFORM_TAGS == WHEEL_PLATFORM_TAGS
-
-    def test_all_five_platforms_present(self):
-        assert len(_WHEEL_PLATFORM_TAGS) == 5
-
-    def test_darwin_tags_have_macosx_prefix(self):
-        for (system, _), tag in _WHEEL_PLATFORM_TAGS.items():
-            if system == "darwin":
-                assert tag.startswith("macosx_")
-
-    def test_linux_tags_have_manylinux(self):
-        for (system, _), tag in _WHEEL_PLATFORM_TAGS.items():
-            if system == "linux":
-                assert "manylinux" in tag
-
-    def test_windows_tag(self):
-        assert _WHEEL_PLATFORM_TAGS[("windows", "x86_64")] == "win_amd64"

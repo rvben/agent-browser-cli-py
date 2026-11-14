@@ -2,7 +2,9 @@
 Shared constants for agent-browser Python wrapper.
 """
 
+import glob
 import platform
+import sysconfig
 
 # Platform detection
 SYSTEM = platform.system().lower()
@@ -19,6 +21,12 @@ if SYSTEM.startswith("darwin"):
     SYSTEM = "darwin"
 elif SYSTEM.startswith("linux"):
     SYSTEM = "linux"
+    if (
+        platform.libc_ver()[0] == "musl"
+        or "musl" in (sysconfig.get_config_var("HOST_GNU_TYPE") or "")
+        or (not platform.libc_ver()[0] and glob.glob("/lib/ld-musl-*.so.1"))
+    ):
+        SYSTEM = "linux-musl"
 elif SYSTEM.startswith("win"):
     SYSTEM = "windows"
 
@@ -49,10 +57,12 @@ def get_binary_download_url(
 # Wheel platform tags for each target
 WHEEL_PLATFORM_TAGS = {
     ("darwin", "arm64"): "macosx_11_0_arm64",
-    ("darwin", "x86_64"): "macosx_10_9_x86_64",
-    ("linux", "x86_64"): "manylinux_2_17_x86_64.manylinux2014_x86_64",
-    ("linux", "arm64"): "manylinux_2_17_aarch64.manylinux2014_aarch64",
+    ("darwin", "x86_64"): "macosx_10_12_x86_64",
+    ("linux", "x86_64"): "manylinux_2_28_x86_64",
+    ("linux", "arm64"): "manylinux_2_28_aarch64",
     ("windows", "x86_64"): "win_amd64",
+    ("linux-musl", "x86_64"): "musllinux_1_2_x86_64",
+    ("linux-musl", "arm64"): "musllinux_1_2_aarch64",
 }
 
 # All supported build targets

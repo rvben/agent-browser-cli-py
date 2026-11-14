@@ -141,7 +141,7 @@ class TestBinaryDownloadUrl:
 
 
 class TestWheelPlatformTags:
-    """Test that all 5 supported platforms have wheel tags."""
+    """Test that all 7 supported platforms have wheel tags."""
 
     def test_all_platforms_have_tags(self):
         from agent_browser.constants import WHEEL_PLATFORM_TAGS
@@ -179,3 +179,26 @@ class TestWheelPlatformTags:
         assert set(BUILD_TARGETS) == set(WHEEL_PLATFORM_TAGS.keys())
 
 
+@pytest.mark.parametrize(
+    "libc,host,loaders,expected",
+    [
+        (("musl", "1.2.5"), "", [], "linux-musl"),
+        (("", ""), "x86_64-linux-musl", [], "linux-musl"),
+        (("", ""), "", ["/lib/ld-musl-x86_64.so.1"], "linux-musl"),
+        (("glibc", "2.28"), "x86_64-linux-gnu", ["/lib/ld-musl-x86_64.so.1"], "linux"),
+    ],
+)
+def test_libc_detection(libc, host, loaders, expected):
+    import runpy
+    from pathlib import Path
+
+    with (
+        patch("platform.system", return_value="Linux"),
+        patch("platform.libc_ver", return_value=libc),
+        patch("sysconfig.get_config_var", return_value=host),
+        patch("glob.glob", return_value=loaders),
+    ):
+        constants = runpy.run_path(
+            str(Path(__file__).resolve().parent.parent / "agent_browser/constants.py")
+        )
+    assert constants["SYSTEM"] == expected
