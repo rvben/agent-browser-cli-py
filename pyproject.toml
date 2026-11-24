@@ -71,3 +71,8 @@ publish-url = "https://upload.pypi.org/legacy/"
 name = "testpypi"
 url = "https://test.pypi.org/simple"
 publish-url = "https://test.pypi.org/legacy/"
+
+[tool.uv]
+exclude-newer = "7 days"
+# Every locked dependency ships a wheel, so nothing is built from source at install time.
+no-build = true
